@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zapret GUI</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="setup-screen" id="setup-screen" style="display:none">
+        <div class="setup-card">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <h2 class="setup-title">Zapret not found</h2>
+            <p class="text-secondary">Zapret will be downloaded and installed to:</p>
+            <p class="mono" style="margin: 8px 0; color: var(--text-primary)">C:\zapret\</p>
+            <div class="setup-progress" id="setup-progress" style="display:none">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <p class="text-secondary" id="progress-text" style="margin-top: 8px"></p>
+            </div>
+            <button class="btn btn-primary" id="btn-download" onclick="downloadZapret()" style="margin-top: 16px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download and install
+            </button>
+            <p class="setup-source text-disabled" style="margin-top: 12px">Source: Flowseal/zapret-discord-youtube (GitHub)</p>
+        </div>
+    </div>
+
+    <div class="layout">
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                <span>ZAPRET</span>
+            </div>
+            <ul class="nav-list">
+                <li class="nav-item active" data-tab="dashboard">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" data-tab="strategy">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    <span>Strategy</span>
+                </li>
+                <li class="nav-item" data-tab="service">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                    <span>Service</span>
+                </li>
+                <li class="nav-item" data-tab="settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    <span>Settings</span>
+                </li>
+                <li class="nav-item" data-tab="lists">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    <span>Lists</span>
+                </li>
+                <li class="nav-item" data-tab="diagnostics">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <span>Diagnostics</span>
+                </li>
+                <li class="nav-item" data-tab="tests">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                    <span>Tests</span>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <span class="version">v1.9.9a</span>
+            </div>
+        </nav>
+
+        <main class="content">
+            <!-- DASHBOARD -->
+            <div class="tab-panel active" id="tab-dashboard">
+                <h1 class="page-title">Dashboard</h1>
+
+                <div class="update-banner" id="update-banner" style="display:none">
+                    <span id="update-text">New version available</span>
+                    <button class="btn btn-primary" id="btn-update" onclick="updateZapret()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        Update
+                    </button>
+                </div>
+
+                <div class="card status-card" id="global-status-card">
+                    <div class="status-header">
+                        <span class="status-label">Global Status</span>
+                        <span class="badge" id="status-badge">--</span>
+                    </div>
+                    <div class="status-body">
+                        <div class="status-row">
+                            <span class="status-key">winws.exe</span>
+                            <span class="status-value" id="dash-winws">--</span>
+                        </div>
+                        <div class="status-row">
+                            <span class="status-key">Service (zapret)</span>
+                            <span class="status-value" id="dash-service">--</span>
+                        </div>
+                        <div class="status-row">
+                            <span class="status-key">WinDivert</span>
+                            <span class="status-value" id="dash-windivert">--</span>
+                        </div>
+                        <div class="status-row">
+                            <span class="status-key">Active Strategy</span>
+                            <span class="status-value mono" id="dash-strategy">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-3">
+                    <div class="card metric-card">
+                        <span class="metric-label">Game Filter</span>
+                        <span class="metric-value" id="dash-game">--</span>
+                    </div>
+                    <div class="card metric-card">
+                        <span class="metric-label">IPSet Filter</span>
+                        <span class="metric-value" id="dash-ipset">--</span>
+                    </div>
+                    <div class="card metric-card">
+                        <span class="metric-label">Auto-Update</span>
+                        <span class="metric-value" id="dash-update">--</span>
+                    </div>
+                </div>
+
+                <button class="btn btn-ghost" id="btn-refresh-status" onclick="loadStatus()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    Refresh
+                </button>
+            </div>
+
+            <!-- STRATEGY -->
+            <div class="tab-panel" id="tab-strategy">
+                <h1 class="page-title">Strategy</h1>
+
+                <div class="toolbar">
+                    <button class="btn btn-primary" id="btn-start" onclick="startStrategy()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Start
+                    </button>
+                    <button class="btn btn-danger" id="btn-stop" onclick="stopStrategy()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                        Stop
+                    </button>
+                    <button class="btn btn-ghost" onclick="loadStrategies()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        Refresh
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="list-header">
+                        <span class="list-col-name">Strategy Name</span>
+                        <span class="list-col-file">File</span>
+                        <span class="list-col-status">Status</span>
+                    </div>
+                    <div class="list-body" id="strategy-list">
+                        <div class="list-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>Loading strategies...</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SERVICE -->
+            <div class="tab-panel" id="tab-service">
+                <h1 class="page-title">Service</h1>
+
+                <div class="card">
+                    <div class="card-header">Windows Service Management</div>
+                    <div class="card-body">
+                        <p class="text-secondary">Install zapret as a Windows service for automatic startup.</p>
+
+                        <div class="form-group">
+                            <label class="form-label">Select strategy for service</label>
+                            <select class="form-select" id="service-bat-select"></select>
+                        </div>
+
+                        <div class="toolbar">
+                            <button class="btn btn-primary" id="btn-service-install" onclick="installService()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                Install Service
+                            </button>
+                            <button class="btn btn-danger" id="btn-service-remove" onclick="removeService()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                Remove Service
+                            </button>
+                        </div>
+
+                        <div class="service-status" id="service-status-display"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SETTINGS -->
+            <div class="tab-panel" id="tab-settings">
+                <h1 class="page-title">Settings</h1>
+
+                <div class="card">
+                    <div class="card-header">Game Filter</div>
+                    <div class="card-body">
+                        <p class="text-secondary">Enable game port filtering for Discord voice/game traffic.</p>
+                        <div class="toggle-group" id="game-filter-group">
+                            <button class="toggle-btn active" data-mode="disabled" onclick="setGameFilter('disabled')">Disabled</button>
+                            <button class="toggle-btn" data-mode="tcp" onclick="setGameFilter('tcp')">TCP</button>
+                            <button class="toggle-btn" data-mode="udp" onclick="setGameFilter('udp')">UDP</button>
+                            <button class="toggle-btn" data-mode="all" onclick="setGameFilter('all')">TCP + UDP</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">IPSet Filter</div>
+                    <div class="card-body">
+                        <p class="text-secondary">Control IP-based filtering mode.</p>
+                        <div class="toggle-group" id="ipset-filter-group">
+                            <button class="toggle-btn" data-mode="none" onclick="setIpsetFilter('none')">none</button>
+                            <button class="toggle-btn" data-mode="any" onclick="setIpsetFilter('any')">any</button>
+                            <button class="toggle-btn active" data-mode="loaded" onclick="setIpsetFilter('loaded')">loaded</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">Auto-Update Check</div>
+                    <div class="card-body">
+                        <p class="text-secondary">Automatically check for new zapret versions on startup.</p>
+                        <label class="switch-label">
+                            <input type="checkbox" class="switch" id="auto-update-switch" onchange="setAutoUpdate(this.checked)">
+                            <span class="switch-slider"></span>
+                            <span class="switch-text">Enabled</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LISTS -->
+            <div class="tab-panel" id="tab-lists">
+                <h1 class="page-title">Lists</h1>
+
+                <div class="lists-layout">
+                    <div class="lists-sidebar">
+                        <div class="list-file-item active" data-list="list-general-user" onclick="selectList(this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            list-general-user.txt
+                        </div>
+                        <div class="list-file-item" data-list="list-exclude-user" onclick="selectList(this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            list-exclude-user.txt
+                        </div>
+                        <div class="list-file-item" data-list="ipset-exclude-user" onclick="selectList(this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            ipset-exclude-user.txt
+                        </div>
+                        <div class="list-file-item" data-list="list-general" onclick="selectList(this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            list-general.txt
+                        </div>
+                        <div class="list-file-item" data-list="list-exclude" onclick="selectList(this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            list-exclude.txt
+                        </div>
+                        <div class="list-file-item" data-list="list-google" onclick="selectList(this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            list-google.txt
+                        </div>
+                        <div class="list-file-item" data-list="ipset-all" onclick="selectList(this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            ipset-all.txt
+                        </div>
+                        <div class="list-file-item" data-list="ipset-exclude" onclick="selectList(this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            ipset-exclude.txt
+                        </div>
+                    </div>
+
+                    <div class="lists-editor">
+                        <div class="lists-toolbar">
+                            <span class="text-secondary" id="current-list-name">list-general-user.txt</span>
+                            <span class="text-secondary" id="list-line-count">0 lines</span>
+                        </div>
+                        <textarea class="list-textarea" id="list-editor" spellcheck="false"></textarea>
+                        <div class="list-add-bar">
+                            <input type="text" class="form-input" id="list-add-input" placeholder="Add domain or IP...">
+                            <button class="btn btn-primary" id="btn-list-add" onclick="addListEntry()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                Add
+                            </button>
+                            <button class="btn btn-ghost" onclick="clearListEditor()">Clear</button>
+                            <button class="btn btn-primary" id="btn-list-save" onclick="saveList()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                                Save
+                            </button>
+                        </div>
+                        <div class="list-feedback" id="list-feedback"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DIAGNOSTICS -->
+            <div class="tab-panel" id="tab-diagnostics">
+                <h1 class="page-title">Diagnostics</h1>
+
+                <div class="toolbar">
+                    <button class="btn btn-primary" id="btn-diagnostics" onclick="runDiagnostics()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        Run Diagnostics
+                    </button>
+                    <button class="btn btn-ghost" onclick="copyLog('diagnostics-output')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Copy Log
+                    </button>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="autoscroll-diagnostics" checked>
+                        Auto-scroll
+                    </label>
+                </div>
+
+                <div class="terminal" id="diagnostics-output"></div>
+            </div>
+
+            <!-- TESTS -->
+            <div class="tab-panel" id="tab-tests">
+                <h1 class="page-title">Tests</h1>
+
+                <div class="toolbar">
+                    <button class="btn btn-primary" id="btn-run-tests" onclick="runTests()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Run Tests
+                    </button>
+                    <button class="btn btn-ghost" onclick="loadTestResults()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        Refresh Results
+                    </button>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">Test Results</div>
+                    <div class="list-body" id="test-results-list">
+                        <div class="list-empty"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg><span>No test results found</span></div>
+                    </div>
+                </div>
+
+                <div class="card" id="test-result-viewer" style="display:none">
+                    <div class="card-header">
+                        <span id="test-result-name">Result</span>
+                        <button class="btn btn-ghost" onclick="copyLog('test-result-output')" style="margin-left:auto">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            Copy
+                        </button>
+                    </div>
+                    <div class="terminal" id="test-result-output"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

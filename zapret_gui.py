@@ -1,0 +1,901 @@
+﻿import os
+import re
+import glob
+import json
+import shutil
+import zipfile
+import threading
+import subprocess
+import time
+from datetime import datetime
+from flask import Flask, render_template, jsonify, request, Response
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ZAPRET_DIR = r'C:\zapret'
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+BIN_DIR = os.path.join(ZAPRET_DIR, 'bin')
+LISTS_DIR = os.path.join(ZAPRET_DIR, 'lists')
+UTILS_DIR = os.path.join(ZAPRET_DIR, 'utils')
+RESULTS_DIR = os.path.join(UTILS_DIR, 'test results')
+
+GITHUB_REPO = 'Flowseal/zapret-discord-youtube'
+GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/' + GITHUB_REPO + '/main/.service/version.txt'
+GITHUB_API_RELEASES = 'https://api.github.com/repos/' + GITHUB_REPO + '/releases/latest'
+
+app = Flask(__name__)
+download_progress = {'percent': 0, 'status': 'idle', 'message': ''}
+
+ALLOWED_LISTS = {
+    'list-general': 'list-general.txt',
+    'list-general-user': 'list-general-user.txt',
+    'list-exclude': 'list-exclude.txt',
+    'list-exclude-user': 'list-exclude-user.txt',
+    'ipset-all': 'ipset-all.txt',
+    'ipset-exclude': 'ipset-exclude.txt',
+    'ipset-exclude-user': 'ipset-exclude-user.txt',
+    'list-google': 'list-google.txt',
+}
+
+ACTIVE_STRATEGY_FILE = os.path.join(UTILS_DIR, '.active_strategy')
+GAME_FLAG_FILE = os.path.join(UTILS_DIR, 'game_filter.enabled')
+UPDATE_FLAG_FILE = os.path.join(UTILS_DIR, 'check_updates.enabled')
+
+
+def is_zapret_installed():
+    return os.path.isdir(ZAPRET_DIR) and os.path.isfile(os.path.join(BIN_DIR, 'winws.exe'))
+
+
+def get_local_version():
+    version_file = os.path.join(ZAPRET_DIR, '.service', 'version.txt')
+    try:
+        if os.path.exists(version_file):
+            with open(version_file, 'r', encoding='utf-8') as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    bat_file = os.path.join(ZAPRET_DIR, 'service.bat')
+    try:
+        if os.path.exists(bat_file):
+            with open(bat_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    m = re.search(r'set\s+"LOCAL_VERSION=([^"]+)"', line)
+                    if m:
+                        return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
+def check_github_version():
+    try:
+        import urllib.request
+        req = urllib.request.Request(GITHUB_VERSION_URL, headers={'Cache-Control': 'no-cache'})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return resp.read().decode('utf-8').strip()
+    except Exception:
+        return None
+
+
+def get_github_release_info():
+    try:
+        import urllib.request
+        req = urllib.request.Request(GITHUB_API_RELEASES, headers={
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'zapret-gui'
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+            zip_url = None
+            for asset in data.get('assets', []):
+                if asset.get('name', '').endswith('.zip'):
+                    zip_url = asset['browser_download_url']
+                    break
+            return {
+                'tag': data.get('tag_name', ''),
+                'name': data.get('name', ''),
+                'zip_url': zip_url,
+            }
+    except Exception:
+        return None
+
+
+def download_file(url, dest):
+    global download_progress
+    try:
+        import urllib.request
+        def report(block, block_size, total_size):
+            if total_size and total_size > 0:
+                downloaded = block * block_size
+                pct = min(int(downloaded * 100 / total_size), 100)
+                download_progress['percent'] = pct
+                download_progress['message'] = str(pct) + '% (' + str(downloaded // 1024) + ' / ' + str(total_size // 1024) + ' KB)'
+        urllib.request.urlretrieve(url, dest, reporthook=report)
+        return True
+    except Exception as e:
+        download_progress['status'] = 'error'
+        download_progress['message'] = str(e)
+        return False
+
+
+def extract_zip_to(tmp_zip, target_dir, version_tag=''):
+    global download_progress
+    download_progress = {'percent': 100, 'status': 'extracting', 'message': 'Extracting...'}
+    try:
+        if os.path.isdir(target_dir):
+            shutil.rmtree(target_dir)
+        with zipfile.ZipFile(tmp_zip, 'r') as zf:
+            members = zf.namelist()
+            if members:
+                common_prefix = os.path.commonprefix(members)
+                if common_prefix and not common_prefix.endswith('/'):
+                    common_prefix = os.path.dirname(common_prefix) + '/'
+                for member in members:
+                    if common_prefix:
+                        rel = member[len(common_prefix):] if member.startswith(common_prefix) else member
+                    else:
+                        rel = member
+                    if rel:
+                        target = os.path.join(target_dir, rel)
+                        if member.endswith('/'):
+                            os.makedirs(target, exist_ok=True)
+                        else:
+                            os.makedirs(os.path.dirname(target), exist_ok=True)
+                            with zf.open(member) as src, open(target, 'wb') as dst:
+                                shutil.copyfileobj(src, dst)
+        if version_tag:
+            ver_dir = os.path.join(target_dir, '.service')
+            os.makedirs(ver_dir, exist_ok=True)
+            with open(os.path.join(ver_dir, 'version.txt'), 'w', encoding='utf-8') as f:
+                f.write(version_tag)
+    except Exception as e:
+        download_progress = {'percent': 0, 'status': 'error', 'message': 'Extraction failed: ' + str(e)}
+        return False
+    return True
+
+
+def do_download_install():
+    global download_progress
+    download_progress = {'percent': 0, 'status': 'downloading', 'message': 'Fetching release info...'}
+    release = get_github_release_info()
+    if not release or not release.get('zip_url'):
+        download_progress = {'percent': 0, 'status': 'error', 'message': 'Failed to get release info from GitHub'}
+        return False
+    download_progress['message'] = 'Downloading ' + release.get('name', release.get('tag', '')) + '...'
+    tmp_zip = os.path.join(SCRIPT_DIR, 'zapret_tmp.zip')
+    if not download_file(release['zip_url'], tmp_zip):
+        return False
+    if not extract_zip_to(tmp_zip, ZAPRET_DIR, release.get('tag', '')):
+        return False
+    if os.path.exists(tmp_zip):
+        try:
+            os.remove(tmp_zip)
+        except Exception:
+            pass
+    download_progress = {'percent': 100, 'status': 'done', 'message': 'Installed successfully'}
+    return True
+
+
+def do_download_update():
+    global download_progress
+    download_progress = {'percent': 0, 'status': 'downloading', 'message': 'Fetching release info...'}
+    release = get_github_release_info()
+    if not release or not release.get('zip_url'):
+        download_progress = {'percent': 0, 'status': 'error', 'message': 'Failed to get release info from GitHub'}
+        return False
+    download_progress['message'] = 'Downloading ' + release.get('name', release.get('tag', '')) + '...'
+    tmp_zip = os.path.join(SCRIPT_DIR, 'zapret_tmp.zip')
+    if not download_file(release['zip_url'], tmp_zip):
+        return False
+    if not extract_zip_to(tmp_zip, ZAPRET_DIR, release.get('tag', '')):
+        return False
+    if os.path.exists(tmp_zip):
+        try:
+            os.remove(tmp_zip)
+        except Exception:
+            pass
+    download_progress = {'percent': 100, 'status': 'done', 'message': 'Updated successfully'}
+    return True
+
+
+def get_bat_files():
+    files = glob.glob(os.path.join(ZAPRET_DIR, 'general*.bat'))
+    files = [f for f in files if 'service' not in os.path.basename(f).lower()]
+    def sort_key(path):
+        name = os.path.basename(path)
+        nums = re.findall(r'\d+', name)
+        return (len(nums), int(nums[0]) if nums else 0, name)
+    files.sort(key=sort_key)
+    return files
+
+
+def get_current_strategy():
+    try:
+        result = subprocess.run(
+            ['reg', 'query', r'HKLM\System\CurrentControlSet\Services\zapret', '/v', 'zapret-discord-youtube'],
+            capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if 'zapret-discord-youtube' in line:
+                    parts = line.split('REG_SZ')
+                    if len(parts) > 1:
+                        return parts[1].strip()
+    except Exception:
+        pass
+    if os.path.exists(ACTIVE_STRATEGY_FILE):
+        try:
+            with open(ACTIVE_STRATEGY_FILE, 'r', encoding='utf-8') as f:
+                strategy = f.read().strip()
+            if strategy and is_winws_running():
+                return strategy
+        except Exception:
+            pass
+    try:
+        result = subprocess.run(
+            ['tasklist', '/FI', 'IMAGENAME eq winws.exe', '/V', '/FO', 'CSV'],
+            capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if 'winws.exe' in line.lower():
+                    parts = line.split(',')
+                    if len(parts) >= 8:
+                        title = parts[7].strip('"')
+                        if 'zapret:' in title:
+                            bat_name = title.split('zapret:')[1].strip()
+                            return bat_name
+    except Exception:
+        pass
+    return None
+
+
+def is_winws_running():
+    try:
+        result = subprocess.run(
+            ['tasklist', '/FI', 'IMAGENAME eq winws.exe'],
+            capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW
+        )
+        return 'winws.exe' in result.stdout.lower()
+    except Exception:
+        return False
+
+
+def get_service_status(name='zapret'):
+    try:
+        result = subprocess.run(
+            ['sc', 'query', name],
+            capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW
+        )
+        if result.returncode != 0:
+            return 'NOT_INSTALLED'
+        for line in result.stdout.splitlines():
+            if 'STATE' in line.upper():
+                upper = line.upper()
+                if 'RUNNING' in upper:
+                    return 'RUNNING'
+                elif 'STOPPED' in upper:
+                    return 'STOPPED'
+                elif 'STOP_PENDING' in upper:
+                    return 'STOP_PENDING'
+        return 'UNKNOWN'
+    except Exception:
+        return 'UNKNOWN'
+
+
+def get_game_filter():
+    if not os.path.exists(GAME_FLAG_FILE):
+        return 'disabled'
+    try:
+        with open(GAME_FLAG_FILE, 'r') as f:
+            mode = f.read().strip().lower()
+        if mode in ('all', 'tcp', 'udp'):
+            return mode
+    except Exception:
+        pass
+    return 'disabled'
+
+
+def get_ipset_status():
+    list_file = os.path.join(LISTS_DIR, 'ipset-all.txt')
+    try:
+        if not os.path.exists(list_file):
+            return 'none'
+        with open(list_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        if len(lines) == 0:
+            return 'any'
+        if any('203.0.113.113/32' in line for line in lines):
+            return 'none'
+        return 'loaded'
+    except Exception:
+        return 'unknown'
+
+
+def get_update_status():
+    return 'enabled' if os.path.exists(UPDATE_FLAG_FILE) else 'disabled'
+
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+
+@app.route('/api/setup/status')
+def api_setup_status():
+    return jsonify({
+        'installed': is_zapret_installed(),
+        'path': ZAPRET_DIR,
+        'version': get_local_version() if is_zapret_installed() else None,
+    })
+
+
+@app.route('/api/setup/download', methods=['POST'])
+def api_setup_download():
+    global download_progress
+    if download_progress.get('status') in ('downloading', 'extracting'):
+        return jsonify({'error': 'Download already in progress'}), 409
+    mode = (request.get_json() or {}).get('mode', 'install')
+    if mode == 'update':
+        thread = threading.Thread(target=do_download_update, daemon=True)
+    else:
+        thread = threading.Thread(target=do_download_install, daemon=True)
+    thread.start()
+    return jsonify({'success': True, 'message': 'Download started'})
+
+
+@app.route('/api/setup/progress')
+def api_setup_progress():
+    def generate():
+        last = ''
+        for _ in range(600):
+            current = json.dumps(download_progress)
+            if current != last:
+                yield 'data: ' + current + '\n\n'
+                last = current
+            if download_progress.get('status') in ('done', 'error'):
+                break
+            time.sleep(0.5)
+    return Response(generate(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+
+
+@app.route('/api/setup/update-check')
+def api_setup_update_check():
+    local = get_local_version()
+    remote = check_github_version()
+    if not remote:
+        return jsonify({'update_available': False, 'error': 'Could not check GitHub'})
+    if not local:
+        return jsonify({'update_available': False, 'local_version': None, 'remote_version': remote})
+    return jsonify({
+        'update_available': local != remote,
+        'local_version': local,
+        'remote_version': remote,
+    })
+
+
+@app.route('/api/status')
+def api_status():
+    if not is_zapret_installed():
+        return jsonify({'installed': False})
+    winws_running = is_winws_running()
+    service_status = get_service_status('zapret')
+    windivert_status = get_service_status('WinDivert')
+    strategy = get_current_strategy()
+    game_filter = get_game_filter()
+    ipset_status = get_ipset_status()
+    update_status = get_update_status()
+    bat_files = get_bat_files()
+    active_bat = None
+    if strategy:
+        for f in bat_files:
+            if os.path.basename(f).replace('.bat', '') == strategy:
+                active_bat = os.path.basename(f)
+                break
+    return jsonify({
+        'installed': True,
+        'winws_running': winws_running,
+        'service_status': service_status,
+        'windivert_status': windivert_status,
+        'strategy': strategy,
+        'active_bat': active_bat,
+        'game_filter': game_filter,
+        'ipset_status': ipset_status,
+        'update_status': update_status,
+        'zapret_dir': ZAPRET_DIR,
+    })
+
+
+@app.route('/api/strategies')
+def api_strategies():
+    if not is_zapret_installed():
+        return jsonify([])
+    files = get_bat_files()
+    current = get_current_strategy()
+    result = []
+    for f in files:
+        name = os.path.basename(f).replace('.bat', '')
+        result.append({
+            'name': name,
+            'filename': os.path.basename(f),
+            'path': f,
+            'active': name == current,
+        })
+    return jsonify(result)
+
+
+@app.route('/api/start', methods=['POST'])
+def api_start():
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    bat_name = data.get('bat')
+    if not bat_name:
+        return jsonify({'error': 'No bat file specified'}), 400
+    bat_path = os.path.join(ZAPRET_DIR, bat_name)
+    if not os.path.exists(bat_path):
+        return jsonify({'error': 'File not found: ' + bat_name}), 404
+    subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, creationflags=_NO_WINDOW)
+    time.sleep(1)
+    subprocess.Popen(
+        ['cmd.exe', '/c', bat_path],
+        cwd=ZAPRET_DIR,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        start_new_session=True
+    )
+    time.sleep(2)
+    running = is_winws_running()
+    if running:
+        strategy_name = bat_name.replace('.bat', '')
+        try:
+            os.makedirs(UTILS_DIR, exist_ok=True)
+            with open(ACTIVE_STRATEGY_FILE, 'w', encoding='utf-8') as f:
+                f.write(strategy_name)
+        except Exception:
+            pass
+    return jsonify({'success': running, 'message': 'Started' if running else 'Failed to start'})
+
+
+@app.route('/api/stop', methods=['POST'])
+def api_stop():
+    try:
+        import ctypes
+        ctypes.windll.shell32.ShellExecuteW(
+            None, 'runas',
+            'cmd.exe',
+            '/c taskkill /F /IM winws.exe',
+            None,
+            1
+        )
+        time.sleep(2)
+        running = is_winws_running()
+        if running:
+            subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
+            time.sleep(1)
+            running = is_winws_running()
+        if not running:
+            if os.path.exists(ACTIVE_STRATEGY_FILE):
+                os.remove(ACTIVE_STRATEGY_FILE)
+        return jsonify({'success': not running, 'message': 'Stopped' if not running else 'Failed to stop'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/service/install', methods=['POST'])
+def api_service_install():
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    bat_name = data.get('bat')
+    if not bat_name:
+        return jsonify({'error': 'No bat file specified'}), 400
+    bat_path = os.path.join(ZAPRET_DIR, bat_name)
+    if not os.path.exists(bat_path):
+        return jsonify({'error': 'File not found: ' + bat_name}), 404
+    winws_exe = os.path.join(BIN_DIR, 'winws.exe')
+    try:
+        subprocess.run(['net', 'stop', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        subprocess.run(['sc', 'delete', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        time.sleep(1)
+        args = build_service_args(bat_path)
+        bin_path = '"' + winws_exe + '" ' + args
+        subprocess.run(
+            ['sc', 'create', 'zapret', 'binPath= ' + bin_path, 'DisplayName= zapret', 'start= auto'],
+            capture_output=True, text=True, timeout=10, creationflags=_NO_WINDOW
+        )
+        subprocess.run(['sc', 'description', 'zapret', 'Zapret DPI bypass software'],
+                       capture_output=True, timeout=5, creationflags=_NO_WINDOW)
+        subprocess.run(['net', 'start', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        strategy_name = bat_name.replace('.bat', '')
+        subprocess.run(
+            ['reg', 'add', r'HKLM\System\CurrentControlSet\Services\zapret',
+             '/v', 'zapret-discord-youtube', '/t', 'REG_SZ', '/d', strategy_name, '/f'],
+            capture_output=True, timeout=5, creationflags=_NO_WINDOW
+        )
+        return jsonify({'success': True, 'message': 'Service installed with ' + bat_name})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+def build_service_args(bat_path):
+    try:
+        with open(bat_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except Exception:
+        return ''
+    args = []
+    capture = False
+    for line in content.splitlines():
+        line = line.strip()
+        if 'winws.exe' in line.lower():
+            capture = True
+        if not capture:
+            continue
+        line = line.replace('^', '')
+        parts = line.split()
+        for part in parts:
+            if 'winws.exe' in part.lower():
+                continue
+            args.append(part)
+    return ' '.join(args)
+
+
+@app.route('/api/service/remove', methods=['POST'])
+def api_service_remove():
+    try:
+        subprocess.run(['net', 'stop', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        subprocess.run(['sc', 'delete', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
+        subprocess.run(['net', 'stop', 'WinDivert'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
+        subprocess.run(['sc', 'delete', 'WinDivert'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
+        return jsonify({'success': True, 'message': 'Service removed'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings')
+def api_settings():
+    if not is_zapret_installed():
+        return jsonify({'installed': False})
+    return jsonify({
+        'installed': True,
+        'game_filter': get_game_filter(),
+        'ipset_status': get_ipset_status(),
+        'update_status': get_update_status(),
+    })
+
+
+@app.route('/api/settings/game', methods=['POST'])
+def api_settings_game():
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    mode = data.get('mode', 'disabled')
+    try:
+        os.makedirs(UTILS_DIR, exist_ok=True)
+        if mode == 'disabled':
+            if os.path.exists(GAME_FLAG_FILE):
+                os.remove(GAME_FLAG_FILE)
+        else:
+            with open(GAME_FLAG_FILE, 'w') as f:
+                f.write(mode)
+        return jsonify({'success': True, 'game_filter': get_game_filter()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/ipset', methods=['POST'])
+def api_settings_ipset():
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    mode = data.get('mode', 'loaded')
+    list_file = os.path.join(LISTS_DIR, 'ipset-all.txt')
+    backup_file = list_file + '.backup'
+    try:
+        current = get_ipset_status()
+        if mode == 'none':
+            if current == 'loaded':
+                if os.path.exists(list_file):
+                    if os.path.exists(backup_file):
+                        os.remove(backup_file)
+                    os.rename(list_file, backup_file)
+            with open(list_file, 'w', encoding='utf-8') as f:
+                f.write('203.0.113.113/32\n')
+        elif mode == 'any':
+            if current == 'loaded' and not os.path.exists(backup_file):
+                shutil.copy2(list_file, backup_file)
+            with open(list_file, 'w', encoding='utf-8') as f:
+                f.write('')
+        elif mode == 'loaded':
+            if os.path.exists(backup_file):
+                if os.path.exists(list_file):
+                    os.remove(list_file)
+                os.rename(backup_file, list_file)
+        return jsonify({'success': True, 'ipset_status': get_ipset_status()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/update', methods=['POST'])
+def api_settings_update():
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    enabled = data.get('enabled', False)
+    try:
+        os.makedirs(UTILS_DIR, exist_ok=True)
+        if enabled:
+            with open(UPDATE_FLAG_FILE, 'w') as f:
+                f.write('ENABLED')
+        else:
+            if os.path.exists(UPDATE_FLAG_FILE):
+                os.remove(UPDATE_FLAG_FILE)
+        return jsonify({'success': True, 'update_status': get_update_status()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/lists/<name>')
+def api_list_read(name):
+    if name not in ALLOWED_LISTS:
+        return jsonify({'error': 'Unknown list'}), 404
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[name])
+    try:
+        if not os.path.exists(filepath):
+            return jsonify({'content': '', 'exists': False})
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return jsonify({'content': content, 'exists': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/lists/<name>', methods=['POST'])
+def api_list_write(name):
+    if name not in ALLOWED_LISTS:
+        return jsonify({'error': 'Unknown list'}), 404
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    content = data.get('content', '')
+    filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[name])
+    try:
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/lists/<name>/add', methods=['POST'])
+def api_list_add(name):
+    if name not in ALLOWED_LISTS:
+        return jsonify({'error': 'Unknown list'}), 404
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    entry = data.get('entry', '').strip()
+    if not entry:
+        return jsonify({'error': 'Empty entry'}), 400
+    filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[name])
+    try:
+        existing = ''
+        if os.path.exists(filepath):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                existing = f.read()
+        lines = [l.strip() for l in existing.splitlines() if l.strip()]
+        if entry in lines:
+            return jsonify({'error': 'Entry already exists', 'duplicate': True}), 409
+        lines.append(entry)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines) + '\n')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/lists/<name>/remove', methods=['POST'])
+def api_list_remove(name):
+    if name not in ALLOWED_LISTS:
+        return jsonify({'error': 'Unknown list'}), 404
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    entry = data.get('entry', '').strip()
+    if not entry:
+        return jsonify({'error': 'Empty entry'}), 400
+    filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[name])
+    try:
+        if not os.path.exists(filepath):
+            return jsonify({'error': 'File not found'}), 404
+        with open(filepath, 'r', encoding='utf-8') as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
+        new_lines = [l for l in lines if l != entry]
+        if len(new_lines) == len(lines):
+            return jsonify({'error': 'Entry not found'}), 404
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(new_lines) + '\n' if new_lines else '')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/diagnostics')
+def api_diagnostics():
+    def generate():
+        yield '--- ZAPRET DIAGNOSTICS ---\n'
+        yield 'Time: ' + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + '\n\n'
+        try:
+            result = subprocess.run(['sc', 'query', 'BFE'], capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW)
+            if 'RUNNING' in result.stdout:
+                yield '[OK] Base Filtering Engine is running\n'
+            else:
+                yield '[FAIL] Base Filtering Engine is not running (required)\n'
+        except Exception:
+            yield '[FAIL] Could not check BFE service\n'
+        yield '\n'
+        proxy_enabled = False
+        try:
+            result = subprocess.run(
+                ['reg', 'query', r'HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings', '/v', 'ProxyEnable'],
+                capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW
+            )
+            if '0x1' in result.stdout:
+                proxy_enabled = True
+        except Exception:
+            pass
+        if proxy_enabled:
+            yield '[WARN] System proxy is enabled\n'
+        else:
+            yield '[OK] System proxy check passed\n'
+        yield '\n'
+        try:
+            result = subprocess.run(
+                ['netsh', 'interface', 'tcp', 'show', 'global'],
+                capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW
+            )
+            if 'enabled' in result.stdout.lower() and 'timestamps' in result.stdout.lower():
+                yield '[OK] TCP timestamps enabled\n'
+            else:
+                yield '[WARN] TCP timestamps disabled - enabling...\n'
+                subprocess.run(['netsh', 'interface', 'tcp', 'set', 'global', 'timestamps=enabled'],
+                               capture_output=True, timeout=5, creationflags=_NO_WINDOW)
+                yield '[OK] TCP timestamps enabled successfully\n'
+        except Exception:
+            yield '[WARN] Could not check TCP timestamps\n'
+        yield '\n'
+        try:
+            result = subprocess.run(
+                ['tasklist', '/FI', 'IMAGENAME eq AdguardSvc.exe'],
+                capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW
+            )
+            if 'adguardsvc.exe' in result.stdout.lower():
+                yield '[FAIL] Adguard detected - conflicts with zapret\n'
+            else:
+                yield '[OK] Adguard check passed\n'
+        except Exception:
+            yield '[WARN] Could not check Adguard\n'
+        yield '\n'
+        for svc_name, label in [('Killer', 'Killer service'), ('SmartByte', 'SmartByte service'),
+                                 ('Intel Connectivity Network Service', 'Intel Connectivity'),
+                                 ('TracSrvWrapper', 'Check Point'), ('EPWD', 'Check Point')]:
+            try:
+                result = subprocess.run(['sc', 'query', svc_name], capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW)
+                if result.returncode == 0:
+                    yield '[FAIL] ' + label + ' found - conflicts with zapret\n'
+                else:
+                    yield '[OK] ' + label + ' check passed\n'
+            except Exception:
+                yield '[WARN] Could not check ' + label + '\n'
+        yield '\n'
+        sys_file = os.path.join(BIN_DIR, 'WinDivert64.sys')
+        if os.path.exists(sys_file):
+            yield '[OK] WinDivert64.sys found\n'
+        else:
+            yield '[FAIL] WinDivert64.sys not found\n'
+        yield '\n'
+        winws_running = is_winws_running()
+        try:
+            result = subprocess.run(['sc', 'query', 'WinDivert'], capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW)
+            wd_active = 'RUNNING' in result.stdout or 'STOP_PENDING' in result.stdout
+            if not winws_running and wd_active:
+                yield '[WARN] WinDivert service active but winws not running - cleaning up\n'
+                subprocess.run(['net', 'stop', 'WinDivert'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
+                subprocess.run(['sc', 'delete', 'WinDivert'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
+                yield '[OK] WinDivert cleaned up\n'
+            elif wd_active:
+                yield '[OK] WinDivert running with winws\n'
+            else:
+                yield '[OK] WinDivert not running (clean state)\n'
+        except Exception:
+            yield '[WARN] Could not check WinDivert\n'
+        yield '\n'
+        found_conflicts = []
+        for svc in ['GoodbyeDPI', 'discordfix_zapret', 'winws1', 'winws2']:
+            try:
+                result = subprocess.run(['sc', 'query', svc], capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW)
+                if result.returncode == 0:
+                    found_conflicts.append(svc)
+            except Exception:
+                pass
+        if found_conflicts:
+            yield '[FAIL] Conflicting bypass services: ' + ', '.join(found_conflicts) + '\n'
+        else:
+            yield '[OK] No conflicting bypass services found\n'
+        yield '\n--- DIAGNOSTICS COMPLETE ---\n'
+    return Response(generate(), mimetype='text/plain', headers={'Cache-Control': 'no-cache'})
+
+
+@app.route('/api/test-results')
+def api_test_results():
+    if not os.path.exists(RESULTS_DIR):
+        return jsonify([])
+    files = glob.glob(os.path.join(RESULTS_DIR, 'test_results_*.txt'))
+    files.sort(reverse=True)
+    results = []
+    for f in files:
+        name = os.path.basename(f)
+        stat = os.stat(f)
+        results.append({
+            'name': name,
+            'size': stat.st_size,
+            'date': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+        })
+    return jsonify(results)
+
+
+@app.route('/api/test-results/<name>')
+def api_test_result_content(name):
+    filepath = os.path.join(RESULTS_DIR, name)
+    if not os.path.exists(filepath) or '..' in name or '/' in name or '\\' in name:
+        return jsonify({'error': 'Not found'}), 404
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return jsonify({'content': content})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/tests/run', methods=['POST'])
+def api_tests_run():
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    test_script = os.path.join(UTILS_DIR, 'test zapret.ps1')
+    if not os.path.exists(test_script):
+        return jsonify({'error': 'Test script not found'}), 404
+    try:
+        import ctypes
+        ctypes.windll.shell32.ShellExecuteW(
+            None, 'runas',
+            'powershell.exe',
+            f'-NoProfile -ExecutionPolicy Bypass -File "{test_script}"',
+            ZAPRET_DIR,
+            1
+        )
+        return jsonify({'success': True, 'message': 'Tests launched in PowerShell window'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+if __name__ == '__main__':
+    import webview
+    print('Zapret directory: ' + ZAPRET_DIR)
+    print('Starting Zapret GUI...')
+    server_thread = threading.Thread(target=lambda: app.run(host='127.0.0.1', port=8080, debug=False, threaded=True), daemon=True)
+    server_thread.start()
+    time.sleep(1)
+    window = webview.create_window(
+        'Zapret GUI',
+        'http://127.0.0.1:8080',
+        width=1100,
+        height=700,
+        min_size=(800, 500),
+        text_select=True,
+    )
+    webview.start(gui='edgechromium', debug=False)
