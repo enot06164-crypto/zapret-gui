@@ -1,160 +1,161 @@
 # Zapret GUI
 
-Современный графический интерфейс для управления [zapret](https://github.com/Flowseal/zapret-discord-youtube) — инструментом обхода DPI-блокировок на Windows.
+Modern web-based interface for managing [zapret](https://github.com/Flowseal/zapret-discord-youtube) — a DPI bypass tool on Windows.
 
-**100% Open Source.** Весь код доступен для проверки — никаких скрытых функций, серверов, телеметрии или вредоносного ПО.
+**100% Open Source.** All code is available for review — no hidden functions, no remote servers, no telemetry, no malware.
 
-## Что это?
+## What is this?
 
-Zapret — это утилита для обхода Deep Packet Inspection (DPI), который используется провайдерами для блокировки сайтов и сервисов (Discord, YouTube и др.). Zapret GUI — это **только оболочка** (интерфейс), которая управляет уже существующим zapret:
+Zapret is a utility for bypassing Deep Packet Inspection (DPI) used by ISPs to block websites and services (Discord, YouTube, etc.). Zapret GUI is **just a wrapper** (interface) that manages the existing zapret:
 
-- Запускает/останавливает bat-файлы стратегий
-- Устанавливает/удаляет службу Windows
-- Редактирует списки доменов и IP
-- Настраивает параметры zapret
-- Запускает диагностику и тесты
+- Start/stop strategy bat files
+- Install/remove Windows service
+- Edit domain and IP lists
+- Configure zapret parameters
+- Run diagnostics and tests
 
-**Zapret GUI НЕ является:**
-- Вирусом, трояном, шпионским ПО
-- Майнером или RAT-инструментом
-- Кейлоггером или стилером
-- VPN/прокси/туннельным сервисом
-- Программой, модифицирующей сетевой стек
+### What Zapret GUI is NOT:
 
-## Прозрачность кода
+- A virus, trojan, or spyware
+- A miner or RAT tool
+- A keylogger or stealer
+- A VPN/proxy/tunnel service
+- A program that modifies the network stack
 
-Весь исходный код открыт и доступен для проверки:
+## Code Transparency
 
-| Файл | Назначение |
-|------|-----------|
-| `zapret_gui.py` | Flask-сервер (весь бэкенд, 900 строк) |
-| `templates/index.html` | HTML-шаблон (350 строк) |
-| `static/style.css` | CSS-стили (550 строк) |
-| `static/app.js` | JavaScript-клиент (740 строк) |
+All source code is open and available for review:
 
-### Что делает .exe
+| File | Purpose |
+|------|---------|
+| `zapret_gui.py` | Flask server (full backend, 900 lines) |
+| `templates/index.html` | HTML template (350 lines) |
+| `static/style.css` | CSS styles (550 lines) |
+| `static/app.js` | JavaScript client (740 lines) |
 
-`ZapretGUI.exe` — это стандартный PyInstaller-бандл:
-- Внутри — Python 3.14 + Flask + pywebview
-- Edge WebView2 — системный компонент Windows (тот же движок, что в Edge браузере)
-- Flask запускает локальный сервер на `127.0.0.1:8080`
-- pywebview открывает окно браузера без адресной строки
-- **Нет** доступа к интернету (кроме проверки версии на GitHub)
-- **Нет** 수집а данных, аналитики, телеметрии
-- **Нет** регистрации, авторизации, аккаунтов
+### What the .exe does
 
-### Что НЕ делает .exe
+`ZapretGUI.exe` is a standard PyInstaller bundle:
+- Inside: Python 3.14 + Flask + pywebview
+- Edge WebView2 — a Windows system component (same engine as Edge browser)
+- Flask runs a local server on `127.0.0.1:8080`
+- pywebview opens a browser window without an address bar
+- **No** internet access (except checking for updates on GitHub)
+- **No** data collection, analytics, or telemetry
+- **No** registration, login, or accounts
 
-- Не отправляет данные на внешние серверы
-- Не сканирует файловую систему
-- Не отслеживает нажатия клавиш
-- Не мониторит сетевой трафик (это делает winws.exe — компонент zapret, не GUI)
-- Не изменяет настройки Windows (кроме служб zapret)
-- Не требует постоянного подключения к интернету
-- Не требует отключения антивируса
+### What the .exe does NOT do
 
-## Возможности
+- Does not send data to external servers
+- Does not scan the file system
+- Does not track keystrokes
+- Does not monitor network traffic (winws.exe does that — a zapret component, not the GUI)
+- Does not change Windows settings (except zapret services)
+- Does not require constant internet connection
+- Does not require disabling antivirus
+
+## Features
 
 ![Dashboard](screenshots/dashboard.png)
 
 ### Dashboard
-- Глобальный статус: работает ли winws.exe, служба, WinDivert
-- Активная стратегия
-- Статусы: Game Filter, IPSet Filter, Auto-Update
+- Global status: winws.exe running, service status, WinDivert
+- Active strategy
+- Game Filter, IPSet Filter, Auto-Update status
 
 ### Strategy
 ![Strategy](screenshots/strategy.png)
 
-- Список всех доступных стратегий (bat-файлов)
-- Запуск/остановка любой стратегии одним кликом
-- Отображение текущего статуса (IDLE / RUNNING)
+- List of all available strategies (bat files)
+- Start/stop any strategy with one click
+- Current status display (IDLE / RUNNING)
 
 ### Service
 ![Service](screenshots/service.png)
 
-- Установка zapret как службы Windows (автозапуск)
-- Выбор стратегии для службы
-- Удаление службы
+- Install zapret as a Windows service (auto-start)
+- Choose strategy for the service
+- Remove service
 
 ### Settings
 ![Settings](screenshots/settings.png)
 
-- **Game Filter** — фильтрация трафика для игр (TCP/UDP)
-- **IPSet Filter** — режим IP-фильтрации (none/any/loaded)
-- **Auto-Update Check** — автоматическая проверка обновлений
+- **Game Filter** — traffic filtering for games (TCP/UDP)
+- **IPSet Filter** — IP filtering mode (none/any/loaded)
+- **Auto-Update Check** — automatic update checking
 
 ### Lists
 ![Lists](screenshots/lists.png)
 
-- Редактирование списков доменов и IP-адресов
-- Встроенный текстовый редактор
-- Добавление/удаление записей по одной
-- Поддержка: list-general, list-exclude, ipset и др.
+- Edit domain and IP address lists
+- Built-in text editor
+- Add/remove entries one by one
+- Supports: list-general, list-exclude, ipset, etc.
 
 ### Diagnostics
 ![Diagnostics](screenshots/diagnostics.png)
 
-- Автоматическая проверка системы:
+- Automatic system check:
   - Base Filtering Engine (BFE)
-  - Системный прокси
+  - System proxy
   - TCP timestamps
-  - Конфликтующие программы (Adguard, Killer, SmartByte)
+  - Conflicting programs (Adguard, Killer, SmartByte)
   - WinDivert
-  - Конфликтующие службы
+  - Conflicting services
 
 ### Tests
 ![Tests](screenshots/tests.png)
 
-- Запуск тестов zapret в отдельном окне PowerShell
-- Просмотр результатов предыдущих тестов
+- Run zapret tests in a separate PowerShell window
+- View previous test results
 
-## Запуск
+## Getting Started
 
-### Через .exe (рекомендуется)
+### Via .exe (recommended)
 
-1. Скачайте `ZapretGUI.exe`
-2. Запустите двойным кликом
-3. Готово — GUI откроется в отдельном окне
+1. Download `ZapretGUI.exe`
+2. Run it with a double click
+3. Done — GUI opens in a separate window
 
-### Через Python
+### Via Python
 
 ```bash
 pip install -r requirements.txt
 python zapret_gui.py
 ```
 
-Или через `start.bat`.
+Or use `start.bat`.
 
-## Требования
+## Requirements
 
 - Windows 10/11
-- Python 3.10+ (только для запуска через Python)
-- Microsoft Edge WebView2 Runtime (для .exe, обычно уже установлен на Windows 10/11)
+- Python 3.10+ (only for running via Python)
+- Microsoft Edge WebView2 Runtime (for .exe, usually pre-installed on Windows 10/11)
 
-## Технологии
+## Tech Stack
 
 - **Backend:** Python 3 + Flask
-- **Frontend:** HTML + CSS + JavaScript (vanilla, без фреймворков)
-- **GUI:** pywebview + Edge WebView2 (системный компонент Windows)
-- **Сборка:** PyInstaller
+- **Frontend:** HTML + CSS + JavaScript (vanilla, no frameworks)
+- **GUI:** pywebview + Edge WebView2 (Windows system component)
+- **Build:** PyInstaller
 
 ## FAQ
 
-### Это вирус?
-Нет. Весь код открыт. .exe создан стандартным инструментом PyInstaller из открытого исходного кода. Никаких скрытых функций.
+### Is this a virus?
+No. All code is open source. The .exe is built with the standard PyInstaller tool from open source code. No hidden features. You can verify the .exe on [VirusTotal](https://www.virustotal.com).
 
-### Почему .exe такой большой (~40 МБ)?
-Внутри — Python 3.14, Flask, pywebview, Pillow, криптографические библиотеки. Это нормальный размер для Python-приложения.
+### Why is the .exe so big (~40 MB)?
+Inside: Python 3.14, Flask, pywebview, Pillow, cryptographic libraries. This is normal for a Python application.
 
-### Нужно ли отключать антивирус?
-Нет. Если антивирус ругается — это ложное срабатывание из-за PyInstaller. Можете проверить .exe на [VirusTotal](https://www.virustotal.com).
+### Do I need to disable antivirus?
+No. If your antivirus flags it, it's a false positive due to PyInstaller. You can verify on VirusTotal.
 
-### Нужен ли интернет?
-Только для: скачивания zapret, проверки обновлений, запуска тестов. Сам интерфейс работает offline.
+### Do I need internet?
+Only for: downloading zapret, checking for updates, running tests. The interface itself works offline.
 
-### Что такое bat-файлы стратегий?
-Это скрипты zapret с разными параметрами обхода DPI. Каждый bat-файл — отдельная стратегия (ALT, FAKE TLS, SIMPLE FAKE и др.).
+### What are strategy bat files?
+They are zapret scripts with different DPI bypass parameters. Each bat file is a separate strategy (ALT, FAKE TLS, SIMPLE FAKE, etc.).
 
-## Лицензия
+## License
 
 MIT License
