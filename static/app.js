@@ -81,6 +81,9 @@ async function loadStatus() {
         windivertEl.textContent = data.windivert_status;
         windivertEl.className = 'status-value ' + (data.windivert_status === 'RUNNING' ? 'running' : data.windivert_status === 'STOPPED' ? 'stopped' : '');
         strategyEl.textContent = data.strategy || 'none';
+
+        const verEl = document.getElementById('app-version');
+        if (verEl && data.version) verEl.textContent = 'v' + data.version;
         document.getElementById('dash-game').textContent = data.game_filter;
         document.getElementById('dash-ipset').textContent = data.ipset_status;
         document.getElementById('dash-update').textContent = data.update_status;

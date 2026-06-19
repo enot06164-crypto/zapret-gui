@@ -403,6 +403,7 @@ def api_status():
         'ipset_status': ipset_status,
         'update_status': update_status,
         'zapret_dir': ZAPRET_DIR,
+        'version': get_local_version(),
     })
 
 

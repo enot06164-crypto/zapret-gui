@@ -2,7 +2,7 @@
 
 Web-интерфейс для управления [zapret](https://github.com/Flowseal/zapret-discord-youtube) — обход DPI.
 
-![Main](screenshots/main.png)
+![Dashboard](screenshots/dashboard.png)
 
 ## Возможности
 
@@ -13,6 +13,29 @@ Web-интерфейс для управления [zapret](https://github.com/F
 - Настройки: Game Filter, IPSet, Auto-Update
 - Диагностика системы
 - Просмотр результатов тестов
+
+## Скриншоты
+
+### Dashboard
+![Dashboard](screenshots/dashboard.png)
+
+### Strategy
+![Strategy](screenshots/strategy.png)
+
+### Service
+![Service](screenshots/service.png)
+
+### Settings
+![Settings](screenshots/settings.png)
+
+### Lists
+![Lists](screenshots/lists.png)
+
+### Diagnostics
+![Diagnostics](screenshots/diagnostics.png)
+
+### Tests
+![Tests](screenshots/tests.png)
 
 ## Запуск
 
