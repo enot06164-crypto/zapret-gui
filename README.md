@@ -28,7 +28,7 @@ Zapret — это утилита для обхода Deep Packet Inspection (DPI
 | Файл | Назначение |
 |------|-----------|
 | zapret_gui.py | Flask-сервер (весь бэкенд, 900 строк) |
-| 	emplates/index.html | HTML-шаблон (350 строк) |
+| emplates/index.html | HTML-шаблон (350 строк) |
 | static/style.css | CSS-стили (550 строк) |
 | static/app.js | JavaScript-клиент (740 строк) |
 
@@ -118,12 +118,12 @@ ZapretGUI.exe — это стандартный PyInstaller-бандл:
 
 ### Через Python
 
-`ash
+```bash
 pip install -r requirements.txt
 python zapret_gui.py
-`
+```
 
-Или через start.bat.
+Или через `start.bat`.
 
 ## Требования
 
