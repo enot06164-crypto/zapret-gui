@@ -25,6 +25,16 @@ GITHUB_API_RELEASES = 'https://api.github.com/repos/' + GITHUB_REPO + '/releases
 app = Flask(__name__)
 download_progress = {'percent': 0, 'status': 'idle', 'message': ''}
 
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get('Origin', '')
+    if origin.startswith('chrome-extension://') or origin.startswith('moz-extension://'):
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    return response
+
 ALLOWED_LISTS = {
     'list-general': 'list-general.txt',
     'list-general-user': 'list-general-user.txt',
@@ -880,6 +890,70 @@ def api_tests_run():
             1
         )
         return jsonify({'success': True, 'message': 'Tests launched in PowerShell window'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/extension/status')
+def api_extension_status():
+    return jsonify({
+        'installed': is_zapret_installed(),
+        'running': is_winws_running() if is_zapret_installed() else False,
+    })
+
+
+@app.route('/api/extension/add', methods=['POST'])
+def api_extension_add():
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    domain = data.get('domain', '').strip()
+    list_name = data.get('list', 'list-general-user')
+    if not domain:
+        return jsonify({'error': 'Empty domain'}), 400
+    if list_name not in ALLOWED_LISTS:
+        return jsonify({'error': 'Unknown list'}), 400
+    filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[list_name])
+    try:
+        existing = ''
+        if os.path.exists(filepath):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                existing = f.read()
+        lines = [l.strip() for l in existing.splitlines() if l.strip()]
+        if domain in lines:
+            return jsonify({'success': True, 'duplicate': True, 'message': domain + ' already in list'})
+        lines.append(domain)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(lines) + '\n')
+        return jsonify({'success': True, 'duplicate': False, 'message': domain + ' added'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/extension/remove', methods=['POST'])
+def api_extension_remove():
+    if not is_zapret_installed():
+        return jsonify({'error': 'Zapret not installed'}), 400
+    data = request.get_json() or {}
+    domain = data.get('domain', '').strip()
+    list_name = data.get('list', 'list-general-user')
+    if not domain:
+        return jsonify({'error': 'Empty domain'}), 400
+    if list_name not in ALLOWED_LISTS:
+        return jsonify({'error': 'Unknown list'}), 400
+    filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[list_name])
+    try:
+        if not os.path.exists(filepath):
+            return jsonify({'error': 'File not found'}), 404
+        with open(filepath, 'r', encoding='utf-8') as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
+        new_lines = [l for l in lines if l != domain]
+        if len(new_lines) == len(lines):
+            return jsonify({'error': 'Domain not found'}), 404
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(new_lines) + '\n' if new_lines else '')
+        return jsonify({'success': True, 'message': domain + ' removed'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

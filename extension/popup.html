@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=320">
+  <title>Zapret Helper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="logo">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+        <span>Zapret Helper</span>
+      </div>
+      <div id="status-dot" class="dot dot-off" title="Отключено"></div>
+    </header>
+
+    <div id="screen-main">
+      <div id="connection-status" class="info-box info-warn">
+        <span id="conn-text">Проверка подключения...</span>
+      </div>
+
+      <div class="current-site">
+        <div class="site-label">Текущий сайт</div>
+        <div id="current-domain" class="site-domain">—</div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-add" class="btn btn-primary" disabled>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          Добавить в обход
+        </button>
+        <button id="btn-remove" class="btn btn-danger" disabled style="display:none">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M5 12h14"/>
+          </svg>
+          Убрать из списка
+        </button>
+      </div>
+
+      <div class="list-select">
+        <label>Список:</label>
+        <select id="list-picker">
+          <option value="list-general-user">Общие (пользовательские)</option>
+          <option value="list-general">Общие (основные)</option>
+          <option value="list-exclude-user">Исключения (пользовательские)</option>
+          <option value="list-exclude">Исключения (основные)</option>
+        </select>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <span>Добавленные сайты</span>
+          <span id="count-badge" class="badge">0</span>
+        </div>
+        <div id="user-list" class="domain-list"></div>
+      </div>
+
+      <footer>
+        <a href="#" id="link-settings">Настройки порта</a>
+        <span id="version-text">v1.0.0</span>
+      </footer>
+    </div>
+
+    <div id="screen-settings" style="display:none">
+      <div class="section-header">
+        <button id="btn-back" class="btn-link">&larr; Назад</button>
+        <span>Настройки</span>
+      </div>
+      <div class="settings-form">
+        <label>Адрес GUI</label>
+        <input type="text" id="input-host" value="http://127.0.0.1:8080" placeholder="http://127.0.0.1:8080">
+        <button id="btn-save-settings" class="btn btn-primary">Сохранить</button>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

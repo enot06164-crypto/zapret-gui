@@ -9,3 +9,4 @@ ZapretGUI.exe
 *.tmp
 *.log
 *.ico
+store-build/
