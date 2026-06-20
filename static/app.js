@@ -3,6 +3,20 @@ let currentListContent = '';
 let statusPollingTimer = null;
 let activeTab = 'dashboard';
 
+function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.content : '';
+}
+
+function csrfFetch(url, options) {
+    options = options || {};
+    options.headers = options.headers || {};
+    if (options.method === 'POST') {
+        options.headers['X-CSRF-Token'] = getCsrfToken();
+    }
+    return window.fetch(url, options);
+}
+
 // === TOAST ===
 function showToast(message, type) {
     const existing = document.querySelector('.toast');
@@ -51,7 +65,7 @@ function stopStatusPolling() {
 // === DASHBOARD ===
 async function loadStatus() {
     try {
-        const res = await fetch('/api/status');
+        const res = await csrfFetch('/api/status');
         const data = await res.json();
         if (data.installed === false) return;
 
@@ -95,7 +109,7 @@ async function loadStatus() {
 // === STRATEGIES ===
 async function loadStrategies() {
     try {
-        const res = await fetch('/api/strategies');
+        const res = await csrfFetch('/api/strategies');
         const strategies = await res.json();
         const list = document.getElementById('strategy-list');
         if (strategies.length === 0) {
@@ -130,7 +144,7 @@ async function startStrategy() {
     btn.disabled = true;
     btn.textContent = 'Starting...';
     try {
-        const res = await fetch('/api/start', {
+        const res = await csrfFetch('/api/start', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({bat: bat})
@@ -156,7 +170,7 @@ async function stopStrategy() {
     btn.disabled = true;
     btn.textContent = 'Stopping...';
     try {
-        const res = await fetch('/api/stop', {method: 'POST'});
+        const res = await csrfFetch('/api/stop', {method: 'POST'});
         const data = await res.json();
         loadStrategies();
         loadStatus();
@@ -177,7 +191,7 @@ async function stopStrategy() {
 async function loadServicePage() {
     const select = document.getElementById('service-bat-select');
     try {
-        const res = await fetch('/api/strategies');
+        const res = await csrfFetch('/api/strategies');
         const strategies = await res.json();
         select.innerHTML = '';
         strategies.forEach(s => {
@@ -186,10 +200,18 @@ async function loadServicePage() {
             opt.textContent = s.name;
             select.appendChild(opt);
         });
-        const statusRes = await fetch('/api/status');
+        const statusRes = await csrfFetch('/api/status');
         const status = await statusRes.json();
         const display = document.getElementById('service-status-display');
-        display.innerHTML = 'Service status: <strong>' + status.service_status + '</strong><br>WinDivert: <strong>' + status.windivert_status + '</strong>';
+        display.textContent = '';
+        const t1 = document.createTextNode('Service status: ');
+        const s1 = document.createElement('strong');
+        s1.textContent = status.service_status || 'unknown';
+        const br = document.createElement('br');
+        const t2 = document.createTextNode('WinDivert: ');
+        const s2 = document.createElement('strong');
+        s2.textContent = status.windivert_status || 'unknown';
+        display.append(t1, s1, br, t2, s2);
     } catch (e) {
         console.error('Failed to load service page:', e);
     }
@@ -203,18 +225,20 @@ async function installService() {
     btn.disabled = true;
     btn.textContent = 'Installing...';
     try {
-        const res = await fetch('/api/service/install', {
+        const res = await csrfFetch('/api/service/install', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({bat: bat})
         });
         const data = await res.json();
         const display = document.getElementById('service-status-display');
+        display.textContent = '';
+        const span = document.createElement('span');
+        span.style.color = data.success ? 'var(--color-success)' : 'var(--color-danger)';
+        span.textContent = data.success ? data.message : (data.error || 'Failed');
+        display.appendChild(span);
         if (data.success) {
-            display.innerHTML = '<span style="color:var(--color-success)">' + data.message + '</span>';
             showToast('Service installed', 'success');
-        } else {
-            display.innerHTML = '<span style="color:var(--color-danger)">' + (data.error || 'Failed') + '</span>';
         }
         loadServicePage();
     } catch (e) {
@@ -231,14 +255,17 @@ async function removeService() {
     btn.disabled = true;
     btn.textContent = 'Removing...';
     try {
-        const res = await fetch('/api/service/remove', {method: 'POST'});
+        const res = await csrfFetch('/api/service/remove', {method: 'POST'});
         const data = await res.json();
         const display = document.getElementById('service-status-display');
+        display.textContent = '';
+        const span = document.createElement('span');
+        span.style.color = data.success ? 'var(--color-success)' : 'var(--color-danger)';
+        span.textContent = data.success ? data.message : (data.message || data.error || 'Failed');
+        display.appendChild(span);
         if (data.success) {
-            display.innerHTML = '<span style="color:var(--color-success)">' + data.message + '</span>';
             showToast('Service removed', 'success');
         } else {
-            display.innerHTML = '<span style="color:var(--color-danger)">' + (data.message || data.error || 'Failed') + '</span>';
             showToast(data.message || data.error || 'Failed to remove', 'error');
         }
         loadServicePage();
@@ -253,7 +280,7 @@ async function removeService() {
 // === SETTINGS ===
 async function loadSettings() {
     try {
-        const res = await fetch('/api/settings');
+        const res = await csrfFetch('/api/settings');
         const data = await res.json();
         if (data.installed === false) return;
         document.querySelectorAll('#game-filter-group .toggle-btn').forEach(btn => {
@@ -270,7 +297,7 @@ async function loadSettings() {
 
 async function setGameFilter(mode) {
     try {
-        const res = await fetch('/api/settings/game', {
+        const res = await csrfFetch('/api/settings/game', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({mode: mode})
@@ -285,7 +312,7 @@ async function setGameFilter(mode) {
 
 async function setIpsetFilter(mode) {
     try {
-        const res = await fetch('/api/settings/ipset', {
+        const res = await csrfFetch('/api/settings/ipset', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({mode: mode})
@@ -300,7 +327,7 @@ async function setIpsetFilter(mode) {
 
 async function setAutoUpdate(enabled) {
     try {
-        await fetch('/api/settings/update', {
+        await csrfFetch('/api/settings/update', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({enabled: enabled})
@@ -322,7 +349,7 @@ function selectList(el) {
 
 async function loadList(name) {
     try {
-        const res = await fetch('/api/lists/' + name);
+        const res = await csrfFetch('/api/lists/' + name);
         const data = await res.json();
         const editor = document.getElementById('list-editor');
         editor.value = data.content || '';
@@ -391,7 +418,7 @@ async function addListEntry() {
     }
 
     try {
-        const res = await fetch('/api/lists/' + currentList + '/add', {
+        const res = await csrfFetch('/api/lists/' + currentList + '/add', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({entry: entry})
@@ -431,7 +458,7 @@ async function saveList() {
     btn.disabled = true;
     btn.textContent = 'Saving...';
     try {
-        const res = await fetch('/api/lists/' + currentList, {
+        const res = await csrfFetch('/api/lists/' + currentList, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({content: editor.value})
@@ -472,7 +499,7 @@ async function runDiagnostics() {
     btn.textContent = 'Running...';
     output.innerHTML = '';
     try {
-        const response = await fetch('/api/diagnostics');
+        const response = await csrfFetch('/api/diagnostics');
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         while (true) {
@@ -546,7 +573,7 @@ async function runTests() {
     btn.disabled = true;
     btn.textContent = 'Launching...';
     try {
-        const res = await fetch('/api/tests/run', {method: 'POST'});
+        const res = await csrfFetch('/api/tests/run', {method: 'POST'});
         const data = await res.json();
         if (data.success) {
             showToast('Tests launched in PowerShell', 'success');
@@ -563,7 +590,7 @@ async function runTests() {
 
 async function loadTestResults() {
     try {
-        const res = await fetch('/api/test-results');
+        const res = await csrfFetch('/api/test-results');
         const results = await res.json();
         const list = document.getElementById('test-results-list');
         if (results.length === 0) {
@@ -594,7 +621,7 @@ async function viewTestResult(name) {
     nameEl.textContent = name;
     output.innerHTML = 'Loading...';
     try {
-        const res = await fetch('/api/test-results/' + encodeURIComponent(name));
+        const res = await csrfFetch('/api/test-results/' + encodeURIComponent(name));
         const data = await res.json();
         output.innerHTML = formatTestOutput(data.content || data.error || 'Empty');
     } catch (e) {
@@ -618,7 +645,7 @@ function formatSize(bytes) {
 // === SETUP / INSTALL ===
 async function checkSetup() {
     try {
-        const res = await fetch('/api/setup/status');
+        const res = await csrfFetch('/api/setup/status');
         const data = await res.json();
         if (!data.installed) {
             document.getElementById('setup-screen').style.display = 'flex';
@@ -646,7 +673,7 @@ async function downloadZapret() {
     btn.textContent = 'Starting...';
     progressDiv.style.display = 'block';
     try {
-        await fetch('/api/setup/download', {
+        await csrfFetch('/api/setup/download', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({mode: 'install'})
@@ -688,7 +715,7 @@ async function updateZapret() {
     btn.disabled = true;
     btn.textContent = 'Updating...';
     try {
-        await fetch('/api/setup/download', {
+        await csrfFetch('/api/setup/download', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({mode: 'update'})
@@ -724,7 +751,7 @@ async function updateZapret() {
 
 async function checkUpdate() {
     try {
-        const res = await fetch('/api/setup/update-check');
+        const res = await csrfFetch('/api/setup/update-check');
         const data = await res.json();
         if (data.update_available) {
             const banner = document.getElementById('update-banner');

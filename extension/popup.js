@@ -59,6 +59,7 @@ async function checkConnection() {
     }
     $('#btn-add').disabled = false;
     $('#btn-remove').disabled = false;
+    updateActionButtons();
   } catch (e) {
     statusBox.className = 'info-box info-err';
     connText.textContent = 'Нет подключения к GUI';
@@ -83,12 +84,13 @@ async function getCurrentTab() {
 
 async function loadUserList() {
   try {
-    const res = await fetch(API_BASE + '/api/lists/' + currentList);
+    const res = await fetch(API_BASE + '/api/lists/' + currentList, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return;
     const data = await res.json();
     const content = data.content || '';
     userDomains = content.split('\n').map(s => s.trim()).filter(Boolean);
     renderDomainList();
+    updateActionButtons();
   } catch (e) {}
 }
 
@@ -138,6 +140,12 @@ function renderDomainList() {
 
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function updateActionButtons() {
+  const inList = currentDomain && userDomains.includes(currentDomain);
+  $('#btn-add').style.display = inList ? 'none' : '';
+  $('#btn-remove').style.display = inList ? '' : 'none';
 }
 
 async function addDomain(domain) {

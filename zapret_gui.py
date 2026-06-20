@@ -4,6 +4,7 @@ import glob
 import json
 import shutil
 import zipfile
+import secrets
 import threading
 import subprocess
 import time
@@ -23,7 +24,11 @@ GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/' + GITHUB_REPO + '/main
 GITHUB_API_RELEASES = 'https://api.github.com/repos/' + GITHUB_REPO + '/releases/latest'
 
 app = Flask(__name__)
+CSRF_TOKEN = secrets.token_hex(32)
 download_progress = {'percent': 0, 'status': 'idle', 'message': ''}
+_download_lock = threading.Lock()
+_file_locks = {}
+_file_locks_lock = threading.Lock()
 
 
 @app.after_request
@@ -34,6 +39,14 @@ def add_cors_headers(response):
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
         response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     return response
+
+def check_csrf():
+    if request.method == 'POST':
+        token = request.headers.get('X-CSRF-Token', '')
+        if token != CSRF_TOKEN:
+            return jsonify({'error': 'Invalid CSRF token'}), 403
+    return None
+
 
 ALLOWED_LISTS = {
     'list-general': 'list-general.txt',
@@ -53,6 +66,13 @@ UPDATE_FLAG_FILE = os.path.join(UTILS_DIR, 'check_updates.enabled')
 
 def is_zapret_installed():
     return os.path.isdir(ZAPRET_DIR) and os.path.isfile(os.path.join(BIN_DIR, 'winws.exe'))
+
+
+def get_file_lock(filepath):
+    with _file_locks_lock:
+        if filepath not in _file_locks:
+            _file_locks[filepath] = threading.Lock()
+        return _file_locks[filepath]
 
 
 def get_local_version():
@@ -130,9 +150,11 @@ def download_file(url, dest):
 def extract_zip_to(tmp_zip, target_dir, version_tag=''):
     global download_progress
     download_progress = {'percent': 100, 'status': 'extracting', 'message': 'Extracting...'}
+    tmp_dir = target_dir + '_tmp_extract'
     try:
-        if os.path.isdir(target_dir):
-            shutil.rmtree(target_dir)
+        if os.path.isdir(tmp_dir):
+            shutil.rmtree(tmp_dir)
+        os.makedirs(tmp_dir, exist_ok=True)
         with zipfile.ZipFile(tmp_zip, 'r') as zf:
             members = zf.namelist()
             if members:
@@ -145,7 +167,9 @@ def extract_zip_to(tmp_zip, target_dir, version_tag=''):
                     else:
                         rel = member
                     if rel:
-                        target = os.path.join(target_dir, rel)
+                        target = os.path.realpath(os.path.join(tmp_dir, rel))
+                        if not target.startswith(os.path.realpath(tmp_dir)):
+                            raise ValueError('Zip entry ' + member + ' escapes target directory')
                         if member.endswith('/'):
                             os.makedirs(target, exist_ok=True)
                         else:
@@ -153,11 +177,16 @@ def extract_zip_to(tmp_zip, target_dir, version_tag=''):
                             with zf.open(member) as src, open(target, 'wb') as dst:
                                 shutil.copyfileobj(src, dst)
         if version_tag:
-            ver_dir = os.path.join(target_dir, '.service')
+            ver_dir = os.path.join(tmp_dir, '.service')
             os.makedirs(ver_dir, exist_ok=True)
             with open(os.path.join(ver_dir, 'version.txt'), 'w', encoding='utf-8') as f:
                 f.write(version_tag)
+        if os.path.isdir(target_dir):
+            shutil.rmtree(target_dir)
+        os.rename(tmp_dir, target_dir)
     except Exception as e:
+        if os.path.isdir(tmp_dir):
+            shutil.rmtree(tmp_dir)
         download_progress = {'percent': 0, 'status': 'error', 'message': 'Extraction failed: ' + str(e)}
         return False
     return True
@@ -248,12 +277,9 @@ def get_current_strategy():
         if result.returncode == 0:
             for line in result.stdout.splitlines():
                 if 'winws.exe' in line.lower():
-                    parts = line.split(',')
-                    if len(parts) >= 8:
-                        title = parts[7].strip('"')
-                        if 'zapret:' in title:
-                            bat_name = title.split('zapret:')[1].strip()
-                            return bat_name
+                    m = re.search(r'zapret:\s*"?([^",]+)', line)
+                    if m:
+                        return m.group(1).strip().strip('"')
     except Exception:
         pass
     return None
@@ -327,7 +353,7 @@ def get_update_status():
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', csrf_token=CSRF_TOKEN)
 
 
 @app.route('/api/setup/status')
@@ -341,15 +367,19 @@ def api_setup_status():
 
 @app.route('/api/setup/download', methods=['POST'])
 def api_setup_download():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     global download_progress
-    if download_progress.get('status') in ('downloading', 'extracting'):
-        return jsonify({'error': 'Download already in progress'}), 409
-    mode = (request.get_json() or {}).get('mode', 'install')
-    if mode == 'update':
-        thread = threading.Thread(target=do_download_update, daemon=True)
-    else:
-        thread = threading.Thread(target=do_download_install, daemon=True)
-    thread.start()
+    with _download_lock:
+        if download_progress.get('status') in ('downloading', 'extracting'):
+            return jsonify({'error': 'Download already in progress'}), 409
+        mode = (request.get_json() or {}).get('mode', 'install')
+        if mode == 'update':
+            thread = threading.Thread(target=do_download_update, daemon=True)
+        else:
+            thread = threading.Thread(target=do_download_install, daemon=True)
+        thread.start()
     return jsonify({'success': True, 'message': 'Download started'})
 
 
@@ -437,13 +467,18 @@ def api_strategies():
 
 @app.route('/api/start', methods=['POST'])
 def api_start():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if not is_zapret_installed():
         return jsonify({'error': 'Zapret not installed'}), 400
     data = request.get_json() or {}
     bat_name = data.get('bat')
     if not bat_name:
         return jsonify({'error': 'No bat file specified'}), 400
-    bat_path = os.path.join(ZAPRET_DIR, bat_name)
+    bat_path = os.path.realpath(os.path.join(ZAPRET_DIR, bat_name))
+    if not bat_path.startswith(os.path.realpath(ZAPRET_DIR)):
+        return jsonify({'error': 'Invalid bat file'}), 400
     if not os.path.exists(bat_path):
         return jsonify({'error': 'File not found: ' + bat_name}), 404
     subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, creationflags=_NO_WINDOW)
@@ -469,24 +504,17 @@ def api_start():
 
 @app.route('/api/stop', methods=['POST'])
 def api_stop():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     try:
-        import ctypes
-        ctypes.windll.shell32.ShellExecuteW(
-            None, 'runas',
-            'cmd.exe',
-            '/c taskkill /F /IM winws.exe',
-            None,
-            1
-        )
+        subprocess.run(['net', 'stop', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        time.sleep(1)
+        subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
         time.sleep(2)
         running = is_winws_running()
-        if running:
-            subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
-            time.sleep(1)
-            running = is_winws_running()
-        if not running:
-            if os.path.exists(ACTIVE_STRATEGY_FILE):
-                os.remove(ACTIVE_STRATEGY_FILE)
+        if not running and os.path.exists(ACTIVE_STRATEGY_FILE):
+            os.remove(ACTIVE_STRATEGY_FILE)
         return jsonify({'success': not running, 'message': 'Stopped' if not running else 'Failed to stop'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -494,13 +522,18 @@ def api_stop():
 
 @app.route('/api/service/install', methods=['POST'])
 def api_service_install():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if not is_zapret_installed():
         return jsonify({'error': 'Zapret not installed'}), 400
     data = request.get_json() or {}
     bat_name = data.get('bat')
     if not bat_name:
         return jsonify({'error': 'No bat file specified'}), 400
-    bat_path = os.path.join(ZAPRET_DIR, bat_name)
+    bat_path = os.path.realpath(os.path.join(ZAPRET_DIR, bat_name))
+    if not bat_path.startswith(os.path.realpath(ZAPRET_DIR)):
+        return jsonify({'error': 'Invalid bat file'}), 400
     if not os.path.exists(bat_path):
         return jsonify({'error': 'File not found: ' + bat_name}), 404
     winws_exe = os.path.join(BIN_DIR, 'winws.exe')
@@ -535,24 +568,28 @@ def build_service_args(bat_path):
     except Exception:
         return ''
     args = []
-    capture = False
     for line in content.splitlines():
         line = line.strip()
-        if 'winws.exe' in line.lower():
-            capture = True
-        if not capture:
+        if 'winws.exe' not in line.lower():
             continue
         line = line.replace('^', '')
         parts = line.split()
         for part in parts:
             if 'winws.exe' in part.lower():
                 continue
-            args.append(part)
+            if ' ' in part and not (part.startswith('"') and part.endswith('"')):
+                args.append('"' + part + '"')
+            else:
+                args.append(part)
+        break
     return ' '.join(args)
 
 
 @app.route('/api/service/remove', methods=['POST'])
 def api_service_remove():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     try:
         subprocess.run(['net', 'stop', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
         subprocess.run(['sc', 'delete', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
@@ -578,10 +615,15 @@ def api_settings():
 
 @app.route('/api/settings/game', methods=['POST'])
 def api_settings_game():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if not is_zapret_installed():
         return jsonify({'error': 'Zapret not installed'}), 400
     data = request.get_json() or {}
     mode = data.get('mode', 'disabled')
+    if mode not in ('disabled', 'all', 'tcp', 'udp'):
+        return jsonify({'error': 'Invalid mode'}), 400
     try:
         os.makedirs(UTILS_DIR, exist_ok=True)
         if mode == 'disabled':
@@ -597,10 +639,15 @@ def api_settings_game():
 
 @app.route('/api/settings/ipset', methods=['POST'])
 def api_settings_ipset():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if not is_zapret_installed():
         return jsonify({'error': 'Zapret not installed'}), 400
     data = request.get_json() or {}
     mode = data.get('mode', 'loaded')
+    if mode not in ('none', 'any', 'loaded'):
+        return jsonify({'error': 'Invalid mode'}), 400
     list_file = os.path.join(LISTS_DIR, 'ipset-all.txt')
     backup_file = list_file + '.backup'
     try:
@@ -630,6 +677,9 @@ def api_settings_ipset():
 
 @app.route('/api/settings/update', methods=['POST'])
 def api_settings_update():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if not is_zapret_installed():
         return jsonify({'error': 'Zapret not installed'}), 400
     data = request.get_json() or {}
@@ -666,6 +716,9 @@ def api_list_read(name):
 
 @app.route('/api/lists/<name>', methods=['POST'])
 def api_list_write(name):
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if name not in ALLOWED_LISTS:
         return jsonify({'error': 'Unknown list'}), 404
     if not is_zapret_installed():
@@ -673,17 +726,22 @@ def api_list_write(name):
     data = request.get_json() or {}
     content = data.get('content', '')
     filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[name])
-    try:
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write(content)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    lock = get_file_lock(filepath)
+    with lock:
+        try:
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(content)
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/lists/<name>/add', methods=['POST'])
 def api_list_add(name):
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if name not in ALLOWED_LISTS:
         return jsonify({'error': 'Unknown list'}), 404
     if not is_zapret_installed():
@@ -693,25 +751,30 @@ def api_list_add(name):
     if not entry:
         return jsonify({'error': 'Empty entry'}), 400
     filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[name])
-    try:
-        existing = ''
-        if os.path.exists(filepath):
-            with open(filepath, 'r', encoding='utf-8') as f:
-                existing = f.read()
-        lines = [l.strip() for l in existing.splitlines() if l.strip()]
-        if entry in lines:
-            return jsonify({'error': 'Entry already exists', 'duplicate': True}), 409
-        lines.append(entry)
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines) + '\n')
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    lock = get_file_lock(filepath)
+    with lock:
+        try:
+            existing = ''
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    existing = f.read()
+            lines = [l.strip() for l in existing.splitlines() if l.strip()]
+            if entry in lines:
+                return jsonify({'error': 'Entry already exists', 'duplicate': True}), 409
+            lines.append(entry)
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines) + '\n')
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/lists/<name>/remove', methods=['POST'])
 def api_list_remove(name):
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if name not in ALLOWED_LISTS:
         return jsonify({'error': 'Unknown list'}), 404
     if not is_zapret_installed():
@@ -721,19 +784,21 @@ def api_list_remove(name):
     if not entry:
         return jsonify({'error': 'Empty entry'}), 400
     filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[name])
-    try:
-        if not os.path.exists(filepath):
-            return jsonify({'error': 'File not found'}), 404
-        with open(filepath, 'r', encoding='utf-8') as f:
-            lines = [l.strip() for l in f.readlines() if l.strip()]
-        new_lines = [l for l in lines if l != entry]
-        if len(new_lines) == len(lines):
-            return jsonify({'error': 'Entry not found'}), 404
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(new_lines) + '\n' if new_lines else '')
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    lock = get_file_lock(filepath)
+    with lock:
+        try:
+            if not os.path.exists(filepath):
+                return jsonify({'error': 'File not found'}), 404
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = [l.strip() for l in f.readlines() if l.strip()]
+            new_lines = [l for l in lines if l != entry]
+            if len(new_lines) == len(lines):
+                return jsonify({'error': 'Entry not found'}), 404
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(new_lines) + '\n' if new_lines else '')
+            return jsonify({'success': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/diagnostics')
@@ -773,10 +838,7 @@ def api_diagnostics():
             if 'enabled' in result.stdout.lower() and 'timestamps' in result.stdout.lower():
                 yield '[OK] TCP timestamps enabled\n'
             else:
-                yield '[WARN] TCP timestamps disabled - enabling...\n'
-                subprocess.run(['netsh', 'interface', 'tcp', 'set', 'global', 'timestamps=enabled'],
-                               capture_output=True, timeout=5, creationflags=_NO_WINDOW)
-                yield '[OK] TCP timestamps enabled successfully\n'
+                yield '[WARN] TCP timestamps disabled - enable manually: netsh interface tcp set global timestamps=enabled\n'
         except Exception:
             yield '[WARN] Could not check TCP timestamps\n'
         yield '\n'
@@ -815,10 +877,7 @@ def api_diagnostics():
             result = subprocess.run(['sc', 'query', 'WinDivert'], capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW)
             wd_active = 'RUNNING' in result.stdout or 'STOP_PENDING' in result.stdout
             if not winws_running and wd_active:
-                yield '[WARN] WinDivert service active but winws not running - cleaning up\n'
-                subprocess.run(['net', 'stop', 'WinDivert'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
-                subprocess.run(['sc', 'delete', 'WinDivert'], capture_output=True, timeout=5, creationflags=_NO_WINDOW)
-                yield '[OK] WinDivert cleaned up\n'
+                yield '[WARN] WinDivert service active but winws not running - run "net stop WinDivert && sc delete WinDivert" to fix\n'
             elif wd_active:
                 yield '[OK] WinDivert running with winws\n'
             else:
@@ -875,6 +934,9 @@ def api_test_result_content(name):
 
 @app.route('/api/tests/run', methods=['POST'])
 def api_tests_run():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if not is_zapret_installed():
         return jsonify({'error': 'Zapret not installed'}), 400
     test_script = os.path.join(UTILS_DIR, 'test zapret.ps1')
@@ -914,21 +976,23 @@ def api_extension_add():
     if list_name not in ALLOWED_LISTS:
         return jsonify({'error': 'Unknown list'}), 400
     filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[list_name])
-    try:
-        existing = ''
-        if os.path.exists(filepath):
-            with open(filepath, 'r', encoding='utf-8') as f:
-                existing = f.read()
-        lines = [l.strip() for l in existing.splitlines() if l.strip()]
-        if domain in lines:
-            return jsonify({'success': True, 'duplicate': True, 'message': domain + ' already in list'})
-        lines.append(domain)
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(lines) + '\n')
-        return jsonify({'success': True, 'duplicate': False, 'message': domain + ' added'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    lock = get_file_lock(filepath)
+    with lock:
+        try:
+            existing = ''
+            if os.path.exists(filepath):
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    existing = f.read()
+            lines = [l.strip() for l in existing.splitlines() if l.strip()]
+            if domain in lines:
+                return jsonify({'success': True, 'duplicate': True, 'message': domain + ' already in list'})
+            lines.append(domain)
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(lines) + '\n')
+            return jsonify({'success': True, 'duplicate': False, 'message': domain + ' added'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/extension/remove', methods=['POST'])
@@ -943,16 +1007,18 @@ def api_extension_remove():
     if list_name not in ALLOWED_LISTS:
         return jsonify({'error': 'Unknown list'}), 400
     filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[list_name])
-    try:
-        if not os.path.exists(filepath):
-            return jsonify({'error': 'File not found'}), 404
-        with open(filepath, 'r', encoding='utf-8') as f:
-            lines = [l.strip() for l in f.readlines() if l.strip()]
-        new_lines = [l for l in lines if l != domain]
-        if len(new_lines) == len(lines):
-            return jsonify({'error': 'Domain not found'}), 404
-        with open(filepath, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(new_lines) + '\n' if new_lines else '')
+    lock = get_file_lock(filepath)
+    with lock:
+        try:
+            if not os.path.exists(filepath):
+                return jsonify({'error': 'File not found'}), 404
+            with open(filepath, 'r', encoding='utf-8') as f:
+                lines = [l.strip() for l in f.readlines() if l.strip()]
+            new_lines = [l for l in lines if l != domain]
+            if len(new_lines) == len(lines):
+                return jsonify({'error': 'Domain not found'}), 404
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write('\n'.join(new_lines) + '\n' if new_lines else '')
         return jsonify({'success': True, 'message': domain + ' removed'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
