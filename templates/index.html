@@ -9,22 +9,61 @@
 </head>
 <body>
     <div class="setup-screen" id="setup-screen" style="display:none">
-        <div class="setup-card">
+        <div class="setup-card" id="setup-choose">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <h2 class="setup-title">Zapret GUI</h2>
+            <p class="text-secondary">Zapret is not configured. What would you like to do?</p>
+            <div class="setup-choices">
+                <button class="setup-choice" onclick="showInstallScreen()">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span class="setup-choice-title">Install zapret</span>
+                    <span class="setup-choice-desc">Download from GitHub to C:\zapret</span>
+                </button>
+                <button class="setup-choice" onclick="showDetectScreen()">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    <span class="setup-choice-title">I already have zapret</span>
+                    <span class="setup-choice-desc">Select an existing zapret folder</span>
+                </button>
+            </div>
+            <p class="setup-source text-disabled" style="margin-top: 16px">Source: Flowseal/zapret-discord-youtube (GitHub)</p>
+        </div>
+
+        <div class="setup-card" id="setup-install" style="display:none">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <h2 class="setup-title">Zapret not found</h2>
+            <h2 class="setup-title">Install zapret</h2>
             <p class="text-secondary">Zapret will be downloaded and installed to:</p>
-            <p class="mono" style="margin: 8px 0; color: var(--text-primary)">C:\zapret\</p>
+            <p class="mono" style="margin: 8px 0; color: var(--text-primary)" id="install-path">C:\zapret\</p>
             <div class="setup-progress" id="setup-progress" style="display:none">
                 <div class="progress-bar">
                     <div class="progress-fill" id="progress-fill"></div>
                 </div>
                 <p class="text-secondary" id="progress-text" style="margin-top: 8px"></p>
             </div>
-            <button class="btn btn-primary" id="btn-download" onclick="downloadZapret()" style="margin-top: 16px">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Download and install
-            </button>
-            <p class="setup-source text-disabled" style="margin-top: 12px">Source: Flowseal/zapret-discord-youtube (GitHub)</p>
+            <div class="toolbar" style="margin-top: 16px">
+                <button class="btn btn-primary" id="btn-download" onclick="downloadZapret()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download and install
+                </button>
+                <button class="btn btn-secondary" onclick="showChooseScreen()">Back</button>
+            </div>
+        </div>
+
+        <div class="setup-card" id="setup-detect" style="display:none">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <h2 class="setup-title">Select zapret folder</h2>
+            <p class="text-secondary">Scanning C:\ for zapret installations...</p>
+            <div id="detect-results" class="detect-results" style="display:none"></div>
+            <div class="form-group" style="margin-top: 12px">
+                <label class="form-label">Or enter path manually</label>
+                <div class="input-group">
+                    <input type="text" class="form-input" id="manual-path" placeholder="C:\zapret">
+                    <button class="btn btn-primary" onclick="selectManualPath()">Select</button>
+                </div>
+            </div>
+            <div id="detect-error" class="list-feedback error" style="margin-top: 8px"></div>
+            <div class="toolbar" style="margin-top: 16px">
+                <button class="btn btn-secondary" onclick="showChooseScreen()">Back</button>
+            </div>
         </div>
     </div>
 
@@ -192,6 +231,30 @@
             <!-- SETTINGS -->
             <div class="tab-panel" id="tab-settings">
                 <h1 class="page-title">Settings</h1>
+
+                <div class="card">
+                    <div class="card-header">Zapret Directory</div>
+                    <div class="card-body">
+                        <p class="text-secondary">Current zapret installation path.</p>
+                        <div class="input-group" style="margin-top: 8px">
+                            <input type="text" class="form-input mono" id="settings-zapret-dir" readonly>
+                            <button class="btn btn-secondary" onclick="openDetectFromSettings()">Change</button>
+                        </div>
+                        <p class="text-secondary" style="margin-top: 4px" id="settings-zapret-version"></p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">Font Size</div>
+                    <div class="card-body">
+                        <p class="text-secondary">Adjust the interface font size.</p>
+                        <div class="font-size-control">
+                            <button class="btn btn-secondary btn-sm" onclick="changeFontSize(-1)">A-</button>
+                            <span class="mono" id="font-size-value" style="min-width: 40px; text-align: center">14px</span>
+                            <button class="btn btn-secondary btn-sm" onclick="changeFontSize(1)">A+</button>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="card">
                     <div class="card-header">Game Filter</div>

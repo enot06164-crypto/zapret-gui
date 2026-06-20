@@ -1,4 +1,5 @@
 :root {
+    --base-font-size: 13px;
     --bg-base: #121212;
     --bg-surface: #18181b;
     --bg-elevated: #27272a;
@@ -26,7 +27,7 @@ html, body {
     background: var(--bg-base);
     color: var(--text-primary);
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: var(--base-font-size);
     line-height: 1.5;
 }
 
@@ -862,4 +863,108 @@ html, body {
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--text-disabled);
+}
+
+/* Setup choices */
+.setup-choices {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.setup-choice {
+    flex: 1;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    padding: 20px 16px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+}
+
+.setup-choice:hover {
+    border-color: var(--color-info);
+    background: rgba(59, 130, 246, 0.08);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.setup-choice-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.setup-choice-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+/* Detect results */
+.detect-results {
+    margin-top: 16px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.detect-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    transition: border-color 0.15s;
+}
+
+.detect-row:hover {
+    border-color: var(--border-default);
+}
+
+.detect-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.detect-info .mono {
+    font-size: 12px;
+    word-break: break-all;
+}
+
+.detect-info .text-secondary {
+    font-size: 11px;
+}
+
+/* Font size control */
+.font-size-control {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+/* Small button */
+.btn-sm {
+    padding: 4px 10px;
+    font-size: 11px;
+}
+
+/* Input group */
+.input-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.input-group .form-input {
+    flex: 1;
 }

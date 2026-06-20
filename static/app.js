@@ -278,10 +278,51 @@ async function removeService() {
 }
 
 // === SETTINGS ===
+let currentFontSize = 14;
+
+function applyFontSize(size) {
+    currentFontSize = size;
+    document.documentElement.style.setProperty('--base-font-size', size + 'px');
+    document.getElementById('font-size-value').textContent = size + 'px';
+}
+
+async function loadFontSize() {
+    try {
+        const res = await csrfFetch('/api/settings');
+        const data = await res.json();
+        if (data.font_size) applyFontSize(data.font_size);
+    } catch (e) {}
+}
+
+async function changeFontSize(delta) {
+    const newSize = Math.min(24, Math.max(10, currentFontSize + delta));
+    applyFontSize(newSize);
+    try {
+        await csrfFetch('/api/settings/font-size', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({size: newSize})
+        });
+    } catch (e) {}
+}
+
+async function openDetectFromSettings() {
+    document.getElementById('setup-screen').style.display = 'flex';
+    document.querySelector('.layout').style.display = 'none';
+    showDetectScreen();
+}
+
 async function loadSettings() {
     try {
         const res = await csrfFetch('/api/settings');
         const data = await res.json();
+        if (data.font_size) applyFontSize(data.font_size);
+        if (data.zapret_dir) {
+            document.getElementById('settings-zapret-dir').value = data.zapret_dir;
+        }
+        if (data.version) {
+            document.getElementById('settings-zapret-version').textContent = 'Version: ' + data.version;
+        }
         if (data.installed === false) return;
         document.querySelectorAll('#game-filter-group .toggle-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.mode === data.game_filter);
@@ -656,6 +697,83 @@ function formatSize(bytes) {
 }
 
 // === SETUP / INSTALL ===
+function showChooseScreen() {
+    document.getElementById('setup-choose').style.display = '';
+    document.getElementById('setup-install').style.display = 'none';
+    document.getElementById('setup-detect').style.display = 'none';
+}
+
+function showInstallScreen() {
+    document.getElementById('setup-choose').style.display = 'none';
+    document.getElementById('setup-install').style.display = '';
+    document.getElementById('setup-detect').style.display = 'none';
+}
+
+async function showDetectScreen() {
+    document.getElementById('setup-choose').style.display = 'none';
+    document.getElementById('setup-install').style.display = 'none';
+    document.getElementById('setup-detect').style.display = '';
+    const results = document.getElementById('detect-results');
+    const error = document.getElementById('detect-error');
+    results.innerHTML = '<span class="text-secondary">Scanning...</span>';
+    results.style.display = 'block';
+    error.textContent = '';
+    try {
+        const res = await csrfFetch('/api/setup/detect');
+        const data = await res.json();
+        if (data.found.length === 0) {
+            results.innerHTML = '<span class="text-secondary">No zapret installations found on C:\\</span>';
+            return;
+        }
+        results.innerHTML = '';
+        data.found.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'detect-row';
+            row.innerHTML =
+                '<div class="detect-info">' +
+                    '<span class="mono">' + escapeHtml(item.path) + '</span>' +
+                    (item.version ? '<span class="text-secondary">v' + escapeHtml(item.version) + '</span>' : '') +
+                '</div>' +
+                '<button class="btn btn-primary btn-sm">Select</button>';
+            row.querySelector('button').onclick = function() { selectDetectedPath(item.path); };
+            results.appendChild(row);
+        });
+    } catch (e) {
+        results.innerHTML = '<span class="text-secondary">Scan failed</span>';
+    }
+}
+
+async function selectDetectedPath(path) {
+    const error = document.getElementById('detect-error');
+    error.textContent = '';
+    try {
+        const res = await csrfFetch('/api/setup/select', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({path: path})
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Zapret folder selected: ' + path, 'success');
+            setTimeout(() => location.reload(), 800);
+        } else {
+            error.textContent = data.error || 'Failed';
+        }
+    } catch (e) {
+        error.textContent = 'Network error';
+    }
+}
+
+async function selectManualPath() {
+    const input = document.getElementById('manual-path');
+    const path = input.value.trim();
+    if (!path) {
+        document.getElementById('detect-error').textContent = 'Enter a path';
+        return;
+    }
+    await selectDetectedPath(path);
+}
+
 async function checkSetup() {
     try {
         const res = await csrfFetch('/api/setup/status');
@@ -663,12 +781,14 @@ async function checkSetup() {
         if (!data.installed) {
             document.getElementById('setup-screen').style.display = 'flex';
             document.querySelector('.layout').style.display = 'none';
+            showChooseScreen();
         } else {
             document.getElementById('setup-screen').style.display = 'none';
             document.querySelector('.layout').style.display = 'flex';
             loadStatus();
             startStatusPolling();
             checkUpdate();
+            loadFontSize();
         }
     } catch (e) {
         console.error('Setup check failed:', e);
@@ -678,6 +798,7 @@ async function checkSetup() {
         if (setupText) setupText.textContent = 'Failed to connect to Flask server. Make sure zapret_gui.py is running.';
         document.getElementById('setup-screen').style.display = 'flex';
         document.querySelector('.layout').style.display = 'none';
+        showChooseScreen();
     }
 }
 

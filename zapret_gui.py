@@ -19,12 +19,44 @@ else:
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     BUNDLE_DIR = SCRIPT_DIR
 
-ZAPRET_DIR = r'C:\zapret'
+CONFIG_FILE = os.path.join(SCRIPT_DIR, 'config.json')
+_DEFAULT_CONFIG = {'zapret_dir': r'C:\zapret', 'font_size': 14}
+
+
+def load_config():
+    try:
+        with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+            cfg = json.load(f)
+        for k, v in _DEFAULT_CONFIG.items():
+            if k not in cfg:
+                cfg[k] = v
+        return cfg
+    except Exception:
+        return dict(_DEFAULT_CONFIG)
+
+
+def save_config(cfg):
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cfg, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+_config = load_config()
+ZAPRET_DIR = _config['zapret_dir']
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW
-BIN_DIR = os.path.join(ZAPRET_DIR, 'bin')
-LISTS_DIR = os.path.join(ZAPRET_DIR, 'lists')
-UTILS_DIR = os.path.join(ZAPRET_DIR, 'utils')
-RESULTS_DIR = os.path.join(UTILS_DIR, 'test results')
+
+
+def _update_dirs():
+    global BIN_DIR, LISTS_DIR, UTILS_DIR, RESULTS_DIR
+    BIN_DIR = os.path.join(ZAPRET_DIR, 'bin')
+    LISTS_DIR = os.path.join(ZAPRET_DIR, 'lists')
+    UTILS_DIR = os.path.join(ZAPRET_DIR, 'utils')
+    RESULTS_DIR = os.path.join(UTILS_DIR, 'test results')
+
+
+_update_dirs()
 
 GITHUB_REPO = 'Flowseal/zapret-discord-youtube'
 GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/' + GITHUB_REPO + '/main/.service/version.txt'
@@ -431,6 +463,65 @@ def api_setup_update_check():
     })
 
 
+@app.route('/api/setup/detect')
+def api_setup_detect():
+    found = []
+    checked = set()
+    for pattern in [r'C:\zapret', r'C:\zapret-*', r'C:\zapret_*']:
+        for match in glob.glob(pattern):
+            if not os.path.isdir(match) or match in checked:
+                continue
+            checked.add(match)
+            winws = os.path.join(match, 'bin', 'winws.exe')
+            if os.path.isfile(winws):
+                version = None
+                vfile = os.path.join(match, '.service', 'version.txt')
+                try:
+                    if os.path.exists(vfile):
+                        with open(vfile, 'r', encoding='utf-8') as f:
+                            version = f.read().strip()
+                except Exception:
+                    pass
+                if not version:
+                    bfile = os.path.join(match, 'service.bat')
+                    try:
+                        if os.path.exists(bfile):
+                            with open(bfile, 'r', encoding='utf-8') as f:
+                                for line in f:
+                                    if 'winws.exe' in line:
+                                        m = re.search(r'--version\s+(\S+)', line)
+                                        if m:
+                                            version = m.group(1)
+                                        break
+                    except Exception:
+                        pass
+                found.append({'path': match, 'version': version})
+    found.sort(key=lambda x: x['path'])
+    return jsonify({'found': found, 'current': ZAPRET_DIR})
+
+
+@app.route('/api/setup/select', methods=['POST'])
+def api_setup_select():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
+    data = request.get_json() or {}
+    path = data.get('path', '').strip().rstrip('\\')
+    if not path:
+        return jsonify({'error': 'Path is required'}), 400
+    if not os.path.isdir(path):
+        return jsonify({'error': 'Directory does not exist'}), 400
+    winws = os.path.join(path, 'bin', 'winws.exe')
+    if not os.path.isfile(winws):
+        return jsonify({'error': 'winws.exe not found in ' + path + '\\bin'}), 400
+    global ZAPRET_DIR, _config
+    ZAPRET_DIR = path
+    _config['zapret_dir'] = path
+    save_config(_config)
+    _update_dirs()
+    return jsonify({'success': True, 'path': path, 'version': get_local_version()})
+
+
 @app.route('/api/status')
 def api_status():
     if not is_zapret_installed():
@@ -621,12 +712,15 @@ def api_service_remove():
 @app.route('/api/settings')
 def api_settings():
     if not is_zapret_installed():
-        return jsonify({'installed': False})
+        return jsonify({'installed': False, 'font_size': _config.get('font_size', 14), 'zapret_dir': ZAPRET_DIR})
     return jsonify({
         'installed': True,
         'game_filter': get_game_filter(),
         'ipset_status': get_ipset_status(),
         'update_status': get_update_status(),
+        'font_size': _config.get('font_size', 14),
+        'zapret_dir': ZAPRET_DIR,
+        'version': get_local_version(),
     })
 
 
@@ -712,6 +806,25 @@ def api_settings_update():
         return jsonify({'success': True, 'update_status': get_update_status()})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/settings/font-size', methods=['POST'])
+def api_settings_font_size():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
+    data = request.get_json() or {}
+    size = data.get('size', 14)
+    try:
+        size = int(size)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Invalid size'}), 400
+    if size < 10 or size > 24:
+        return jsonify({'error': 'Size must be 10-24'}), 400
+    global _config
+    _config['font_size'] = size
+    save_config(_config)
+    return jsonify({'success': True, 'font_size': size})
 
 
 @app.route('/api/lists/<name>')
