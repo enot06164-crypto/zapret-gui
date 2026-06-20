@@ -265,7 +265,14 @@ def do_download_install():
 
 def do_download_update():
     global download_progress
-    update_progress(percent=0, status='downloading', message='Fetching release info...')
+    update_progress(percent=0, status='downloading', message='Stopping zapret...')
+    try:
+        subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        subprocess.run(['net', 'stop', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        time.sleep(1)
+    except Exception:
+        pass
+    update_progress(percent=5, status='downloading', message='Fetching release info...')
     release = get_github_release_info()
     if not release or not release.get('zip_url'):
         update_progress(percent=0, status='error', message='Failed to get release info from GitHub')
