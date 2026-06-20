@@ -1,4 +1,5 @@
 ﻿import os
+import sys
 import re
 import glob
 import json
@@ -11,7 +12,13 @@ import time
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request, Response
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    SCRIPT_DIR = os.path.dirname(sys.executable)
+    BUNDLE_DIR = sys._MEIPASS
+else:
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    BUNDLE_DIR = SCRIPT_DIR
+
 ZAPRET_DIR = r'C:\zapret'
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW
 BIN_DIR = os.path.join(ZAPRET_DIR, 'bin')
@@ -23,7 +30,7 @@ GITHUB_REPO = 'Flowseal/zapret-discord-youtube'
 GITHUB_VERSION_URL = 'https://raw.githubusercontent.com/' + GITHUB_REPO + '/main/.service/version.txt'
 GITHUB_API_RELEASES = 'https://api.github.com/repos/' + GITHUB_REPO + '/releases/latest'
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=os.path.join(BUNDLE_DIR, 'templates'), static_folder=os.path.join(BUNDLE_DIR, 'static'))
 CSRF_TOKEN = secrets.token_hex(32)
 download_progress = {'percent': 0, 'status': 'idle', 'message': ''}
 _download_lock = threading.Lock()
@@ -1031,9 +1038,9 @@ def api_extension_remove():
                 return jsonify({'error': 'Domain not found'}), 404
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(new_lines) + '\n' if new_lines else '')
-        return jsonify({'success': True, 'message': domain + ' removed'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            return jsonify({'success': True, 'message': domain + ' removed'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
