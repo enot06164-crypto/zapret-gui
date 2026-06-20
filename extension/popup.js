@@ -151,13 +151,13 @@ function updateActionButtons() {
 async function addDomain(domain) {
   if (!domain) return;
   try {
-    const res = await fetch(API_BASE + '/api/lists/' + currentList + '/add', {
+    const res = await fetch(API_BASE + '/api/extension/add', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entry: domain })
+      body: JSON.stringify({ domain: domain, list: currentList })
     });
     const data = await res.json();
-    if (res.status === 409 && data.duplicate) {
+    if (data.duplicate) {
       showToast(domain + ' уже в списке', 'ok');
     } else if (data.success) {
       showToast(domain + ' добавлен', 'ok');
@@ -173,10 +173,10 @@ async function addDomain(domain) {
 async function removeDomain(domain) {
   if (!domain) return;
   try {
-    const res = await fetch(API_BASE + '/api/lists/' + currentList + '/remove', {
+    const res = await fetch(API_BASE + '/api/extension/remove', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entry: domain })
+      body: JSON.stringify({ domain: domain, list: currentList })
     });
     const data = await res.json();
     if (data.success) {

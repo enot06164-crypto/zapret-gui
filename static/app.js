@@ -303,8 +303,12 @@ async function setGameFilter(mode) {
             body: JSON.stringify({mode: mode})
         });
         const data = await res.json();
-        loadSettings();
-        showToast('Game filter: ' + mode, 'success');
+        if (data.success) {
+            loadSettings();
+            showToast('Game filter: ' + mode, 'success');
+        } else {
+            showToast(data.error || 'Failed to save', 'error');
+        }
     } catch (e) {
         showToast('Failed to save', 'error');
     }
@@ -318,8 +322,12 @@ async function setIpsetFilter(mode) {
             body: JSON.stringify({mode: mode})
         });
         const data = await res.json();
-        loadSettings();
-        showToast('IPSet filter: ' + mode, 'success');
+        if (data.success) {
+            loadSettings();
+            showToast('IPSet filter: ' + mode, 'success');
+        } else {
+            showToast(data.error || 'Failed to save', 'error');
+        }
     } catch (e) {
         showToast('Failed to save', 'error');
     }
@@ -327,12 +335,17 @@ async function setIpsetFilter(mode) {
 
 async function setAutoUpdate(enabled) {
     try {
-        await csrfFetch('/api/settings/update', {
+        const res = await csrfFetch('/api/settings/update', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({enabled: enabled})
         });
-        showToast('Auto-update: ' + (enabled ? 'enabled' : 'disabled'), 'success');
+        const data = await res.json();
+        if (data.success) {
+            showToast('Auto-update: ' + (enabled ? 'enabled' : 'disabled'), 'success');
+        } else {
+            showToast(data.error || 'Failed to save', 'error');
+        }
     } catch (e) {
         showToast('Failed to save', 'error');
     }
@@ -659,6 +672,10 @@ async function checkSetup() {
         }
     } catch (e) {
         console.error('Setup check failed:', e);
+        const setupTitle = document.querySelector('.setup-title');
+        const setupText = document.querySelector('#setup-screen .text-secondary');
+        if (setupTitle) setupTitle.textContent = 'Server not running';
+        if (setupText) setupText.textContent = 'Failed to connect to Flask server. Make sure zapret_gui.py is running.';
         document.getElementById('setup-screen').style.display = 'flex';
         document.querySelector('.layout').style.display = 'none';
     }

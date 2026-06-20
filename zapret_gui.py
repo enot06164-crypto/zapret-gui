@@ -31,6 +31,16 @@ _file_locks = {}
 _file_locks_lock = threading.Lock()
 
 
+def update_progress(percent=None, status=None, message=None):
+    with _download_lock:
+        if percent is not None:
+            download_progress['percent'] = percent
+        if status is not None:
+            download_progress['status'] = status
+        if message is not None:
+            download_progress['message'] = message
+
+
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get('Origin', '')
@@ -149,7 +159,7 @@ def download_file(url, dest):
 
 def extract_zip_to(tmp_zip, target_dir, version_tag=''):
     global download_progress
-    download_progress = {'percent': 100, 'status': 'extracting', 'message': 'Extracting...'}
+    update_progress(percent=100, status='extracting', message='Extracting...')
     tmp_dir = target_dir + '_tmp_extract'
     try:
         if os.path.isdir(tmp_dir):
@@ -187,17 +197,17 @@ def extract_zip_to(tmp_zip, target_dir, version_tag=''):
     except Exception as e:
         if os.path.isdir(tmp_dir):
             shutil.rmtree(tmp_dir)
-        download_progress = {'percent': 0, 'status': 'error', 'message': 'Extraction failed: ' + str(e)}
+        update_progress(percent=0, status='error', message='Extraction failed: ' + str(e))
         return False
     return True
 
 
 def do_download_install():
     global download_progress
-    download_progress = {'percent': 0, 'status': 'downloading', 'message': 'Fetching release info...'}
+    update_progress(percent=0, status='downloading', message='Fetching release info...')
     release = get_github_release_info()
     if not release or not release.get('zip_url'):
-        download_progress = {'percent': 0, 'status': 'error', 'message': 'Failed to get release info from GitHub'}
+        update_progress(percent=0, status='error', message='Failed to get release info from GitHub')
         return False
     download_progress['message'] = 'Downloading ' + release.get('name', release.get('tag', '')) + '...'
     tmp_zip = os.path.join(SCRIPT_DIR, 'zapret_tmp.zip')
@@ -210,16 +220,16 @@ def do_download_install():
             os.remove(tmp_zip)
         except Exception:
             pass
-    download_progress = {'percent': 100, 'status': 'done', 'message': 'Installed successfully'}
+    update_progress(percent=100, status='done', message='Installed successfully')
     return True
 
 
 def do_download_update():
     global download_progress
-    download_progress = {'percent': 0, 'status': 'downloading', 'message': 'Fetching release info...'}
+    update_progress(percent=0, status='downloading', message='Fetching release info...')
     release = get_github_release_info()
     if not release or not release.get('zip_url'):
-        download_progress = {'percent': 0, 'status': 'error', 'message': 'Failed to get release info from GitHub'}
+        update_progress(percent=0, status='error', message='Failed to get release info from GitHub')
         return False
     download_progress['message'] = 'Downloading ' + release.get('name', release.get('tag', '')) + '...'
     tmp_zip = os.path.join(SCRIPT_DIR, 'zapret_tmp.zip')
@@ -232,7 +242,7 @@ def do_download_update():
             os.remove(tmp_zip)
         except Exception:
             pass
-    download_progress = {'percent': 100, 'status': 'done', 'message': 'Updated successfully'}
+    update_progress(percent=100, status='done', message='Updated successfully')
     return True
 
 
@@ -725,6 +735,8 @@ def api_list_write(name):
         return jsonify({'error': 'Zapret not installed'}), 400
     data = request.get_json() or {}
     content = data.get('content', '')
+    if len(content) > 10 * 1024 * 1024:
+        return jsonify({'error': 'Content too large (max 10 MB)'}), 400
     filepath = os.path.join(LISTS_DIR, ALLOWED_LISTS[name])
     lock = get_file_lock(filepath)
     with lock:
