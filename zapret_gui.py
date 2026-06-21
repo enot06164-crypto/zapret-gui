@@ -3,6 +3,7 @@ import sys
 import re
 import glob
 import json
+import shlex
 import shutil
 import zipfile
 import secrets
@@ -46,6 +47,8 @@ def save_config(cfg):
 _config = load_config()
 ZAPRET_DIR = _config['zapret_dir']
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW
+TEMP_DIR = os.path.join(SCRIPT_DIR, '_tmp')
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 
 def _update_dirs():
@@ -647,12 +650,17 @@ def api_start():
         return jsonify({'error': 'File not found: ' + bat_name}), 404
     subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, creationflags=_NO_WINDOW)
     time.sleep(1)
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = 0
     subprocess.Popen(
         ['cmd.exe', '/c', bat_path],
         cwd=ZAPRET_DIR,
         creationflags=subprocess.CREATE_NO_WINDOW,
+        startupinfo=startupinfo,
         start_new_session=True
     )
+    time.sleep(2)
     time.sleep(2)
     running = is_winws_running()
     if running:

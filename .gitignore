@@ -8,5 +8,6 @@ ZapretGUI.exe
 *.zip
 *.tmp
 *.log
-*.ico
 store-build/
+_tmp/
+config.json
