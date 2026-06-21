@@ -178,6 +178,44 @@ def get_github_release_info():
         return None
 
 
+def _stop_zapret():
+    for _ in range(3):
+        try:
+            subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        except Exception:
+            pass
+        try:
+            subprocess.run(['taskkill', '/IM', 'winws.exe', '/F', '/T'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        except Exception:
+            pass
+        try:
+            subprocess.run(['wmic', 'process', 'where', "name='winws.exe'", 'call', 'terminate'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        except Exception:
+            pass
+        try:
+            subprocess.run(['powershell', '-Command', 'Stop-Process -Name winws -Force -ErrorAction SilentlyContinue'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+        except Exception:
+            pass
+        time.sleep(1)
+    try:
+        subprocess.run(['net', 'stop', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+    except Exception:
+        pass
+    try:
+        subprocess.run(['net', 'stop', 'WinDivert'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
+    except Exception:
+        pass
+    time.sleep(2)
+    if is_winws_running():
+        try:
+            subprocess.run(['powershell', '-Command',
+                'Start-Process cmd -ArgumentList \"/c taskkill /IM winws.exe /F & pause\" -Verb RunAs -ErrorAction SilentlyContinue'],
+                capture_output=True, timeout=15, creationflags=_NO_WINDOW)
+        except Exception:
+            pass
+        time.sleep(3)
+
+
 def download_file(url, dest):
     global download_progress
     try:
@@ -231,7 +269,15 @@ def extract_zip_to(tmp_zip, target_dir, version_tag=''):
             with open(os.path.join(ver_dir, 'version.txt'), 'w', encoding='utf-8') as f:
                 f.write(version_tag)
         if os.path.isdir(target_dir):
-            shutil.rmtree(target_dir)
+            try:
+                shutil.rmtree(target_dir)
+            except OSError:
+                backup = target_dir + '_old_' + str(int(time.time()))
+                try:
+                    os.rename(target_dir, backup)
+                except OSError:
+                    update_progress(percent=0, status='error', message='Cannot replace zapret folder. Stop all zapret processes and try again.')
+                    return False
         os.rename(tmp_dir, target_dir)
     except Exception as e:
         if os.path.isdir(tmp_dir):
@@ -243,7 +289,12 @@ def extract_zip_to(tmp_zip, target_dir, version_tag=''):
 
 def do_download_install():
     global download_progress
-    update_progress(percent=0, status='downloading', message='Fetching release info...')
+    update_progress(percent=0, status='downloading', message='Checking for running processes...')
+    _stop_zapret()
+    if is_winws_running():
+        update_progress(percent=0, status='error', message='winws.exe is still running. Please stop zapret manually (from the Strategy tab or Task Manager), then try again.')
+        return False
+    update_progress(percent=5, status='downloading', message='Fetching release info...')
     release = get_github_release_info()
     if not release or not release.get('zip_url'):
         update_progress(percent=0, status='error', message='Failed to get release info from GitHub')
@@ -265,13 +316,11 @@ def do_download_install():
 
 def do_download_update():
     global download_progress
-    update_progress(percent=0, status='downloading', message='Stopping zapret...')
-    try:
-        subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
-        subprocess.run(['net', 'stop', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
-        time.sleep(1)
-    except Exception:
-        pass
+    update_progress(percent=0, status='downloading', message='Checking for running processes...')
+    _stop_zapret()
+    if is_winws_running():
+        update_progress(percent=0, status='error', message='winws.exe is still running. Please stop zapret manually (from the Strategy tab or Task Manager), then try again.')
+        return False
     update_progress(percent=5, status='downloading', message='Fetching release info...')
     release = get_github_release_info()
     if not release or not release.get('zip_url'):

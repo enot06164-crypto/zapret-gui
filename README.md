@@ -13,6 +13,8 @@ Zapret — это утилита для обхода Deep Packet Inspection (DPI
 - Редактирует списки доменов и IP
 - Настраивает параметры zapret
 - Запускает диагностику и тесты
+- Поддерживает несколько версий zapret на диске
+- Настраиваемый размер шрифта интерфейса
 
 **Zapret GUI НЕ является:**
 - Вирусом, трояном, шпионским ПО
@@ -27,10 +29,11 @@ Zapret — это утилита для обхода Deep Packet Inspection (DPI
 
 | Файл | Назначение |
 |------|-----------|
-| zapret_gui.py | Flask-сервер (весь бэкенд, 900 строк) |
-| templates/index.html | HTML-шаблон (350 строк) |
-| static/style.css | CSS-стили (550 строк) |
-| static/app.js | JavaScript-клиент (740 строк) |
+| zapret_gui.py | Flask-сервер (весь бэкенд) |
+| templates/index.html | HTML-шаблон |
+| static/style.css | CSS-стили |
+| static/app.js | JavaScript-клиент |
+| config.json | Конфигурация (папка zapret, размер шрифта) |
 | extension/manifest.json | Расширение браузера (Manifest v3) |
 | extension/popup.html | Popup расширения |
 | extension/popup.js | Логика расширения |
@@ -56,6 +59,23 @@ ZapretGUI.exe — это стандартный PyInstaller-бандл:
 - Не требует постоянного подключения к интернету
 - Не требует отключения антивируса
 
+## Первый запуск
+
+При первом запуске программа предложит выбрать:
+
+![Setup Choose](screenshots/setup-choose.png)
+
+### Установить zapret
+Нажмите **"Install zapret"** — программа скачает последнюю версию с GitHub и установит в `C:\zapret\{версия}`. Процесс отображается с прогресс-баром.
+
+### У меня уже есть zapret
+Нажмите **"I already have zapret"** — программа автоматически найдёт все установленные версии zapret на диске `C:\`:
+
+![Setup Detect](screenshots/setup-detect.png)
+
+- Выберите нужную версию из списка
+- Или введите путь вручную
+
 ## Возможности
 
 ![Dashboard](screenshots/dashboard.png)
@@ -64,6 +84,7 @@ ZapretGUI.exe — это стандартный PyInstaller-бандл:
 - Глобальный статус: работает ли winws.exe, служба, WinDivert
 - Активная стратегия
 - Статусы: Game Filter, IPSet Filter, Auto-Update
+- Баннер обновления (при наличии новой версии)
 
 ### Strategy
 ![Strategy](screenshots/strategy.png)
@@ -82,6 +103,8 @@ ZapretGUI.exe — это стандартный PyInstaller-бандл:
 ### Settings
 ![Settings](screenshots/settings.png)
 
+- **Zapret Directory** — текущая папка zapret + кнопка "Change" для смены версии
+- **Font Size** — настройка размера шрифта интерфейса (10–24px, кнопки A-/A+)
 - **Game Filter** — фильтрация трафика для игр (TCP/UDP)
 - **IPSet Filter** — режим IP-фильтрации (none/any/loaded)
 - **Auto-Update Check** — автоматическая проверка обновлений
@@ -110,10 +133,11 @@ ZapretGUI.exe — это стандартный PyInstaller-бандл:
 
 - Запуск тестов zapret в отдельном окне PowerShell
 - Просмотр результатов предыдущих тестов
+- Подсветка результатов (OK/FAIL/WARN)
 
 ## Расширение браузера (Zapret Helper)
 
-Расширение для Chrome/Edge позволяет быстро добавлять заблокированные сайты в списки обхода прямо из браузера.
+Расширение для Chrome/Edge/Firefox позволяет быстро добавлять заблокированные сайты в списки обхода прямо из браузера.
 
 ### Установка
 
@@ -137,6 +161,7 @@ ZapretGUI.exe — это стандартный PyInstaller-бандл:
 - Выбор списка (general, general-user, exclude, exclude-user)
 - Просмотр добавленных доменов
 - Настройка адреса GUI (если порт изменён)
+- Индикатор подключения (зелёный/жёлтый/красный)
 
 ## Запуск
 
@@ -144,7 +169,7 @@ ZapretGUI.exe — это стандартный PyInstaller-бандл:
 
 1. Скачайте `ZapretGUI.exe`
 2. Запустите двойным кликом
-3. При первом запуске программа предложит скачать zapret — он установится в `C:\zapret`
+3. При первом запуске выберите "Install zapret" или "I already have zapret"
 4. Готово — GUI откроется в отдельном окне
 
 ### Через Python
@@ -168,14 +193,15 @@ python zapret_gui.py
 - **Frontend:** HTML + CSS + JavaScript (vanilla, без фреймворков)
 - **GUI:** pywebview + Edge WebView2 (системный компонент Windows)
 - **Сборка:** PyInstaller
+- **Расширение:** Manifest v3 (Chrome/Edge/Firefox)
 
 ## FAQ
 
 ### Это вирус?
 Нет. Весь код открыт. .exe создан стандартным инструментом PyInstaller из открытого исходного кода. Никаких скрытых функций. Можете проверить .exe на [VirusTotal](https://www.virustotal.com).
 
-### Почему .exe такой большой (~40 МБ)?
-Внутри — Python 3.14, Flask, pywebview, Pillow, криптографические библиотеки. Это нормальный размер для Python-приложения.
+### Почему .exe такой большой (~20 МБ)?
+Внутри — Python 3.14, Flask, pywebview, криптографические библиотеки. Это нормальный размер для Python-приложения.
 
 ### Нужно ли отключать антивирус?
 Нет. Если антивирус ругается — это ложное срабатывание из-за PyInstaller. Можете проверить на VirusTotal.
@@ -185,6 +211,12 @@ python zapret_gui.py
 
 ### Что такое bat-файлы стратегий?
 Это скрипты zapret с разными параметрами обхода DPI. Каждый bat-файл — отдельная стратегия (ALT, FAKE TLS, SIMPLE FAKE и др.).
+
+### Можно ли использовать несколько версий zapret?
+Да. В настройках нажмите "Change" рядом с Zapret Directory — программа найдёт все версии на диске C:\ и позволит выбрать нужную.
+
+### Как изменить размер шрифта?
+В настройках (Settings) используйте кнопки A-/A+ для изменения размера шрифта (10–24px).
 
 ## Лицензия
 

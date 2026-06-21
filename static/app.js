@@ -307,6 +307,7 @@ async function changeFontSize(delta) {
 }
 
 async function openDetectFromSettings() {
+    setupFromSettings = true;
     document.getElementById('setup-screen').style.display = 'flex';
     document.querySelector('.layout').style.display = 'none';
     showDetectScreen();
@@ -697,13 +698,22 @@ function formatSize(bytes) {
 }
 
 // === SETUP / INSTALL ===
+let setupFromSettings = false;
+
 function showChooseScreen() {
+    if (setupFromSettings) {
+        setupFromSettings = false;
+        document.getElementById('setup-screen').style.display = 'none';
+        document.querySelector('.layout').style.display = 'flex';
+        return;
+    }
     document.getElementById('setup-choose').style.display = '';
     document.getElementById('setup-install').style.display = 'none';
     document.getElementById('setup-detect').style.display = 'none';
 }
 
 function showInstallScreen() {
+    setupFromSettings = false;
     document.getElementById('setup-choose').style.display = 'none';
     document.getElementById('setup-install').style.display = '';
     document.getElementById('setup-detect').style.display = 'none';
