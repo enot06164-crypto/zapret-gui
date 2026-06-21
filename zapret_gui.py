@@ -53,10 +53,14 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 
 def _update_dirs():
     global BIN_DIR, LISTS_DIR, UTILS_DIR, RESULTS_DIR
+    global ACTIVE_STRATEGY_FILE, GAME_FLAG_FILE, UPDATE_FLAG_FILE
     BIN_DIR = os.path.join(ZAPRET_DIR, 'bin')
     LISTS_DIR = os.path.join(ZAPRET_DIR, 'lists')
     UTILS_DIR = os.path.join(ZAPRET_DIR, 'utils')
     RESULTS_DIR = os.path.join(UTILS_DIR, 'test results')
+    ACTIVE_STRATEGY_FILE = os.path.join(UTILS_DIR, '.active_strategy')
+    GAME_FLAG_FILE = os.path.join(UTILS_DIR, 'game_filter.enabled')
+    UPDATE_FLAG_FILE = os.path.join(UTILS_DIR, 'check_updates.enabled')
 
 
 _update_dirs()
@@ -110,10 +114,6 @@ ALLOWED_LISTS = {
     'ipset-exclude-user': 'ipset-exclude-user.txt',
     'list-google': 'list-google.txt',
 }
-
-ACTIVE_STRATEGY_FILE = os.path.join(UTILS_DIR, '.active_strategy')
-GAME_FLAG_FILE = os.path.join(UTILS_DIR, 'game_filter.enabled')
-UPDATE_FLAG_FILE = os.path.join(UTILS_DIR, 'check_updates.enabled')
 
 
 def is_zapret_installed():
@@ -661,7 +661,6 @@ def api_start():
         start_new_session=True
     )
     time.sleep(2)
-    time.sleep(2)
     running = is_winws_running()
     if running:
         strategy_name = bat_name.replace('.bat', '')
@@ -739,17 +738,30 @@ def build_service_args(bat_path):
             content = f.read()
     except Exception:
         return ''
+    lines = content.splitlines()
+    merged = []
+    buf = ''
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('::') or stripped.startswith('@echo') or stripped.startswith('chcp') or stripped.startswith('cd ') or stripped.startswith('call ') or stripped.startswith('set ') or stripped.startswith('echo') or stripped == '' or stripped.startswith(':'):
+            continue
+        buf += ' ' + stripped.replace('^', '').strip()
+        if not stripped.endswith('^'):
+            merged.append(buf.strip())
+            buf = ''
+    if buf.strip():
+        merged.append(buf.strip())
     args = []
-    for line in content.splitlines():
-        line = line.strip()
+    for line in merged:
         if 'winws.exe' not in line.lower():
             continue
-        line = line.replace('^', '')
         parts = line.split()
         for part in parts:
             if 'winws.exe' in part.lower():
                 continue
-            if ' ' in part and not (part.startswith('"') and part.endswith('"')):
+            if part.startswith('"') and part.endswith('"'):
+                args.append(part)
+            elif ' ' in part:
                 args.append('"' + part + '"')
             else:
                 args.append(part)
