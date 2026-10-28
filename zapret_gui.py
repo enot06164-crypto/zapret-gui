@@ -648,6 +648,9 @@ def api_start():
         return jsonify({'error': 'Invalid bat file'}), 400
     if not os.path.exists(bat_path):
         return jsonify({'error': 'File not found: ' + bat_name}), 404
+    valid, msg = validate_bat_content(bat_path)
+    if not valid:
+        return jsonify({'error': 'Invalid bat file: ' + msg}), 400
     subprocess.run(['taskkill', '/IM', 'winws.exe', '/F'], capture_output=True, creationflags=_NO_WINDOW)
     time.sleep(1)
     startupinfo = subprocess.STARTUPINFO()
@@ -707,6 +710,9 @@ def api_service_install():
         return jsonify({'error': 'Invalid bat file'}), 400
     if not os.path.exists(bat_path):
         return jsonify({'error': 'File not found: ' + bat_name}), 404
+    valid, msg = validate_bat_content(bat_path)
+    if not valid:
+        return jsonify({'error': 'Invalid bat file: ' + msg}), 400
     winws_exe = os.path.join(BIN_DIR, 'winws.exe')
     try:
         subprocess.run(['net', 'stop', 'zapret'], capture_output=True, timeout=10, creationflags=_NO_WINDOW)
@@ -730,6 +736,21 @@ def api_service_install():
         return jsonify({'success': True, 'message': 'Service installed with ' + bat_name})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+def validate_bat_content(bat_path):
+    try:
+        with open(bat_path, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        # Only allow lines that contain safe commands (no arbitrary powershell, cmd injection, etc.)
+        forbidden = ['powershell', 'cmd.exe /c', 'wmic', 'netsh', 'sc delete', 'reg add', 'del ', 'format', 'diskpart']
+        lower = content.lower()
+        for bad in forbidden:
+            if bad in lower:
+                return False, 'Forbidden command detected: ' + bad
+        return True, ''
+    except Exception:
+        return False, 'Cannot read bat file'
 
 
 def build_service_args(bat_path):
@@ -1174,6 +1195,9 @@ def api_extension_status():
 
 @app.route('/api/extension/add', methods=['POST'])
 def api_extension_add():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if not is_zapret_installed():
         return jsonify({'error': 'Zapret not installed'}), 400
     data = request.get_json() or {}
@@ -1205,6 +1229,9 @@ def api_extension_add():
 
 @app.route('/api/extension/remove', methods=['POST'])
 def api_extension_remove():
+    csrf_err = check_csrf()
+    if csrf_err:
+        return csrf_err
     if not is_zapret_installed():
         return jsonify({'error': 'Zapret not installed'}), 400
     data = request.get_json() or {}

@@ -148,12 +148,17 @@ function updateActionButtons() {
   $('#btn-remove').style.display = inList ? '' : 'none';
 }
 
+function getCsrfToken() {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  return meta ? meta.content : '';
+}
+
 async function addDomain(domain) {
   if (!domain) return;
   try {
     const res = await fetch(API_BASE + '/api/extension/add', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
       body: JSON.stringify({ domain: domain, list: currentList })
     });
     const data = await res.json();
@@ -175,7 +180,7 @@ async function removeDomain(domain) {
   try {
     const res = await fetch(API_BASE + '/api/extension/remove', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
       body: JSON.stringify({ domain: domain, list: currentList })
     });
     const data = await res.json();
